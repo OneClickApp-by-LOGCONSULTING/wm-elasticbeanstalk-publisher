@@ -88,7 +88,8 @@ jobs:
           fi   
           grep -q -i -c "$SEARCH_STRING" "$PROPERTIES_FILE"
            
-          if [ $(grep -q -i -c "$SEARCH_STRING" "$PROPERTIES_FILE") -eq 0 ] then
+          if [ $(grep -q -i -c "$SEARCH_STRING" "$PROPERTIES_FILE") -eq 0 ] 
+          then
             echo "✅ String '$SEARCH_STRING' is NOT present in $PROPERTIES_FILE."        
           else 
             echo "❌ String '$SEARCH_STRING' is present in $PROPERTIES_FILE."               
