@@ -67,7 +67,9 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v3
 
-      - run: echo "💡 The $REPO_NAME repository has been cloned to the runner."
+      - run: |
+          echo "💡 The $REPO_NAME repository has been cloned to the runner."
+          ls
 
       - name: Check if a wavemakeronline.com string exists in the wm-profile properties file
         id: check_string_in_properties
