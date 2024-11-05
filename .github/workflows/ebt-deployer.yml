@@ -76,9 +76,10 @@ jobs:
       - name: Check if a wavemakeronline.com string exists in the wm-profile properties file
         id: check_string_in_properties
         run: |
-          PROPERTIES_FILE="/profiles/${{ inputs.wm-profile }}.properties"
+          PROPERTIES_FILE="${{ inputs.wm-profile }}.properties"
           SEARCH_STRING="wavemakeronline.com"
-          
+          cd /
+          cd profiles          
           # Search for the string in the properties file
           if grep -q "$SEARCH_STRING" "$PROPERTIES_FILE"; then
             echo "✅ String '$SEARCH_STRING' NOT found in $PROPERTIES_FILE."
