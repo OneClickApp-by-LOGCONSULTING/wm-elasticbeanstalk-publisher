@@ -84,13 +84,14 @@ jobs:
           # Search for the string in the properties file
           if grep -q "$SEARCH_STRING" "$PROPERTIES_FILE"; then
             echo "✅ String '$SEARCH_STRING' NOT found in $PROPERTIES_FILE."
-            echo "found=false" >> $GITHUB_ENV  # Store a failure flag            
+            echo "found=false" >> $GITHUB_ENV      
+            STRING_FOUND=false
           else
             echo "found=true" >> $GITHUB_ENV  # Store a success flag for later use
             # Print the content of the file where the string was found, with the string highlighted
-            echo "=== Contents of $PROPERTIES_FILE ==="
-            grep --color=always "$SEARCH_STRING" "$PROPERTIES_FILE"  # Highlight the string in the file content
-            echo "=========================="
+            # echo "=== Contents of $PROPERTIES_FILE ==="
+            # grep --color=always "$SEARCH_STRING" "$PROPERTIES_FILE"
+            # echo "=========================="
             STRING_FOUND=true
           fi
           if [ "$STRING_FOUND" = true ]; then
