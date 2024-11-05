@@ -1,4 +1,5 @@
 name: REUSABLE ACTION - Build and Deploy an WAVEMAKER application to Elastic Beanstalk
+# WAVEMAKER RELEASE NOTES https://docs.wavemaker.com/learn/wavemaker-release-notes/
 
 on:
   workflow_call:
@@ -6,34 +7,34 @@ on:
       node-version:
         required: false
         type: string
-        default: '18.16.1'  # Valore di default per Node.js
+        default: '18.16.1'  # Default Node.js version
       maven-version:
         required: false
         type: string
-        default: '3.9.9'  # Valore di default per Maven
+        default: '3.9.9'  # Default Maven Version
       java-version:
         required: false
         type: string
-        default: '21'  # Valore di default per Java
+        default: '21'  # Default JAVA version for Build WM application refer to  release notes
       aws-region:
         required: false
         type: string
-        default: 'eu-south-1'  # Valore di default per la regione AWS     
+        default: 'eu-south-1'  # AWS Region
       environment-name:
         required: true
         type: string
-      wm-app-name:
+      wm-app-name: # Wavemaker application version
         required: false
         type: string
-        default: 'OneClickApp'  # Valore di default per il nome dell'applicazione
-      beanstalk-application-name:
+        default: 'OneClickApp'  
+      beanstalk-application-name: #AWS ElasticBeanstalk Application name
         required: false
         type: string
-        default: 'OneClickApp'  # Valore di default per il nome dell'applicazione
+        default: 'OneClickApp'  
     secrets:
-       aws-access-key-id:
+       aws-access-key-id: # AWS AccessKey
         required: true      
-       aws-secret-access-key:
+       aws-secret-access-key: # AWS SecretKey
         required: true
       
 
