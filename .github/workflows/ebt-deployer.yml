@@ -71,7 +71,7 @@ jobs:
           echo "💡 The $REPO_NAME repository has been cloned to the runner."
           ls
           echo "========== Wavemaker App profiles propeties files ========"
-          cd profiles/
+          cd profiles 
           ls
           echo "=========================================================="
 
