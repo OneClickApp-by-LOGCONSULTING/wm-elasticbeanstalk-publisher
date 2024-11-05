@@ -86,16 +86,20 @@ jobs:
             echo "❌ The properties file $PROPERTIES_FILE does not exist."
             exit 1
           fi
-          # Search for the string in the properties file
-          if grep "$SEARCH_STRING" "$PROPERTIES_FILE"; then
-            echo "✅ String '$SEARCH_STRING' found in $PROPERTIES_FILE."               
-            echo "=== Contents of $PROPERTIES_FILE ==="
-            grep --color=always "$SEARCH_STRING" "$PROPERTIES_FILE"
+          echo "=== Contents of $PROPERTIES_FILE ==="
+            # Use 'grep' with --color=always for highlighting
+            grep --color=always -n "$SEARCH_STRING" "$PROPERTIES_FILE" || true
             echo "=========================="
-          else       
-            grep  "$SEARCH_STRING" "$PROPERTIES_FILE"
-            echo "❌ String '$SEARCH_STRING'  found in $PROPERTIES_FILE."
-          fi
+          # Search for the string in the properties file
+          # if grep "$SEARCH_STRING" "$PROPERTIES_FILE"; then
+          #   echo "✅ String '$SEARCH_STRING' found in $PROPERTIES_FILE."               
+          #   echo "=== Contents of $PROPERTIES_FILE ==="
+          #   grep --color=always "$SEARCH_STRING" "$PROPERTIES_FILE"
+          #   echo "=========================="
+          # else       
+          #   grep  "$SEARCH_STRING" "$PROPERTIES_FILE"
+          #   echo "❌ String '$SEARCH_STRING'  found in $PROPERTIES_FILE."
+          # fi
         
 
       - name: Setup Node.js
