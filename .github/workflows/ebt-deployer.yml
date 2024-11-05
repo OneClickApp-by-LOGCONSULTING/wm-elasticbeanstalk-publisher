@@ -69,6 +69,9 @@ jobs:
 
       - run: |
           echo "💡 The $REPO_NAME repository has been cloned to the runner."
+          cd ${{ github.action_path }}
+          ls
+          cd profiles/
           ls
 
       - name: Check if a wavemakeronline.com string exists in the wm-profile properties file
