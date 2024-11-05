@@ -79,7 +79,7 @@ jobs:
           mvn -version
           npm --version
           node --version
-          ant --version
+         
 
       - name: Create the WAR after running the tests
         run: mvn clean install -Pprod -X -e
