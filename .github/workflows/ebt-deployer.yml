@@ -18,13 +18,7 @@ on:
       aws-region:
         required: false
         type: string
-        default: 'eu-south-1'  # Valore di default per la regione AWS
-      aws-access-key-id:
-        required: true
-        type: string
-      aws-secret-access-key:
-        required: true
-        type: string
+        default: 'eu-south-1'  # Valore di default per la regione AWS     
       environment-name:
         required: true
         type: string
@@ -36,6 +30,12 @@ on:
         required: false
         type: string
         default: 'OneClickApp'  # Valore di default per il nome dell'applicazione
+    secrets:
+       aws-access-key-id:
+        required: true      
+       aws-secret-access-key:
+        required: true
+      
 
 jobs:
   build:
