@@ -119,7 +119,7 @@ jobs:
           GITHUB_REPOSITORY: "${{ github.repository }}"
         run: |        
           REPO_NAME=$(basename $GITHUB_REPOSITORY)
-          cp /home/runner/work/$REPO_NAME/target/${{ inputs.wm-app-name }}.war ${{ inputs.wm-app-name }}.war
+          cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war ${{ inputs.wm-app-name }}.war
           mkdir .ebextensions
           cp  ${{ github.workspace }}/log-streaming.config .ebextensions 
           cd .ebextensions
