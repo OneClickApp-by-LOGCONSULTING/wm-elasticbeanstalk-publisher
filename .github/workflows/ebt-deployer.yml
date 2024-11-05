@@ -94,7 +94,7 @@ jobs:
             echo "=== Contents of $PROPERTIES_FILE ==="
             grep  --color=always -i -n "$SEARCH_STRING" "$PROPERTIES_FILE"
             echo "=========================="
-            # exit 1
+            exit 1
           else 
              echo "✅ String '$SEARCH_STRING' is NOT present in $PROPERTIES_FILE."     
           fi
