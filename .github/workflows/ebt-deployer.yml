@@ -74,7 +74,7 @@ jobs:
       - name: Check if a wavemakeronline.com string exists in the wm-profile properties file
         id: check_string_in_properties
         run: |
-          PROPERTIES_FILE="profiles/${{ inputs.wm-profile }}.properties"
+          PROPERTIES_FILE="/profiles/${{ inputs.wm-profile }}.properties"
           SEARCH_STRING="wavemakeronline.com"
           
           # Search for the string in the properties file
