@@ -80,7 +80,7 @@ jobs:
         run: |
           PROPERTIES_FILE="${{ inputs.wm-profile }}.properties"
           SEARCH_STRING="wavemakeronline.com"
-          # cd profiles
+          cd profiles
           # Check if the file exists
           if [ ! -f "$PROPERTIES_FILE" ]; then
             echo "❌ The properties file $PROPERTIES_FILE does not exist."
@@ -88,7 +88,7 @@ jobs:
           fi
           echo "=== Contents of $PROPERTIES_FILE ==="
             # Use 'grep' with --color=always for highlighting
-            grep --color=always -n "$SEARCH_STRING" "$PROPERTIES_FILE"  
+            grep --color=always -n $SEARCH_STRING $PROPERTIES_FILE
             echo "=========================="
           # Search for the string in the properties file
           # if grep "$SEARCH_STRING" "$PROPERTIES_FILE"; then
