@@ -86,14 +86,15 @@ jobs:
             echo "❌ The properties file $PROPERTIES_FILE does not exist."
             exit 1
           fi   
-          if grep -q -i "$SEARCH_STRING" "$PROPERTIES_FILE"; then
+           
+          if [ $(grep -q -i -c "$SEARCH_STRING" "$PROPERTIES_FILE") -eq 0 ] then
+            echo "✅ String '$SEARCH_STRING' is NOT present in $PROPERTIES_FILE."        
+          else 
             echo "❌ String '$SEARCH_STRING' is present in $PROPERTIES_FILE."               
             echo "=== Contents of $PROPERTIES_FILE ==="
             grep  --color=always -i -n "$SEARCH_STRING" "$PROPERTIES_FILE"
             echo "=========================="
             exit 1
-          else 
-            echo "✅ String '$SEARCH_STRING' is NOT present in $PROPERTIES_FILE."
           fi
         
 
