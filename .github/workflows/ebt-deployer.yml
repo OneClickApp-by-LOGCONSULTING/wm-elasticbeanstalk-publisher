@@ -80,7 +80,7 @@ jobs:
         run: |
           PROPERTIES_FILE="${{ inputs.wm-profile }}.properties"
           SEARCH_STRING="wavemakeronline.com"
-          cd profiles
+          # cd profiles
           # Check if the file exists
           if [ ! -f "$PROPERTIES_FILE" ]; then
             echo "❌ The properties file $PROPERTIES_FILE does not exist."
