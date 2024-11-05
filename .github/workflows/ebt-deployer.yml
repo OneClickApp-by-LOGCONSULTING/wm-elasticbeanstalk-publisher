@@ -47,12 +47,17 @@ jobs:
     steps:
       - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
       - run: echo "🐧 This job is now running on a ${{ runner.os }} server hosted by GitHub!"
-      - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
+      - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."    
+      - run: |
+          REPO_NAME=$(basename $GITHUB_REPOSITORY)
+          echo "The repository name is $REPO_NAME"
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
 
       - name: Check out repository code
         uses: actions/checkout@v3
 
-      - run: echo "💡 The ${{ github.repository.split('/')[1] }} repository has been cloned to the runner."
+      - run: echo "💡 The $REPO_NAME repository has been cloned to the runner."
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
@@ -108,7 +113,7 @@ jobs:
         env:
           TIME: "${{ steps.time.outputs.time }}"
         run: |        
-          cp /home/runner/work/${{ github.repository.split('/')[1] }}/target/${{ inputs.wm-app-name }}.war ${{ inputs.wm-app-name }}.war
+          cp /home/runner/work/$REPO_NAME/target/${{ inputs.wm-app-name }}.war ${{ inputs.wm-app-name }}.war
           mkdir .ebextensions
           cp  ${{ github.workspace }}/log-streaming.config .ebextensions 
           cd .ebextensions
