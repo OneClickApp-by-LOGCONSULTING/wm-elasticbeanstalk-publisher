@@ -86,8 +86,8 @@ jobs:
             echo "❌ The properties file $PROPERTIES_FILE does not exist."
             exit 1
           fi   
-          echo sed -n "'/$SEARCH_STRING/gp'" $PROPERTIES_FILE
-          sed -n "'/$SEARCH_STRING/gp'" $PROPERTIES_FILE
+          echo sed -n "'/$SEARCH_STRING/p'" $PROPERTIES_FILE
+          sed -n "'/$SEARCH_STRING/p'" $PROPERTIES_FILE
           
           if sed -n "/$SEARCH_STRING/p" "$PROPERTIES_FILE"; then
             echo "❌ String '$SEARCH_STRING' is present in $PROPERTIES_FILE."               
