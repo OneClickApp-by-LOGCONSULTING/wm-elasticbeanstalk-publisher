@@ -127,7 +127,8 @@ jobs:
           cd .ebextensions
           ls
           cd ..
-          zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war ${{ inputs.wm-app-name }}.war .ebextensions/log-streaming.config
+          zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war ${{ inputs.wm-app-name }}.war 
+#          .ebextensions/log-streaming.config
           unzip -l ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip
           aws s3 cp ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip s3://${{ inputs.aws-s3-bucket-name }}/ --region ${{ inputs.aws-region }}
           aws elasticbeanstalk create-application-version --application-name ${{ inputs.beanstalk-application-name }} --version-label ${{ inputs.wm-app-name }}-$TIME --source-bundle S3Bucket="${{ inputs.aws-s3-bucket-name }}",S3Key="${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip" --no-auto-create-application --region ${{ inputs.aws-region }}
