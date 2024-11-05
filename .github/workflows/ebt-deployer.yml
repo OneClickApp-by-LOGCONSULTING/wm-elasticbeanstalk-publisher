@@ -68,8 +68,7 @@ jobs:
         uses: actions/checkout@v3
 
       - run: |
-          echo "💡 The $REPO_NAME repository has been cloned to the runner."
-          ls
+          echo "💡 The $REPO_NAME repository has been cloned to the runner."          
           echo "========== Wavemaker App profiles propeties files ========"
           cd profiles 
           ls
@@ -78,16 +77,15 @@ jobs:
       - name: Check if a wavemakeronline.com string exists in the wm-profile properties file
         id: check_string_in_properties
         run: |
+          echo "💡 Cheche the ${{ inputs.wm-profile }}.properties file in propeties folder. Looking for string 'wavemakeronline.com' becaude pipeline presume to deploy in production, without the need of wavemakeronline staging enviroments."          
           PROPERTIES_FILE="${{ inputs.wm-profile }}.properties"
-          SEARCH_STRING="prefab"
+          SEARCH_STRING="wavemakeronline.com"
           cd profiles
           # Check if the file exists
           if [ ! -f "$PROPERTIES_FILE" ]; then
             echo "❌ The properties file $PROPERTIES_FILE does not exist."
             exit 1
-          fi   
-          # grep -q -i -s -c "$SEARCH_STRING" "$PROPERTIES_FILE"
-           
+          fi        
           if grep -q -i "$SEARCH_STRING" "$PROPERTIES_FILE";
           then
             echo "❌ String '$SEARCH_STRING' is present in $PROPERTIES_FILE."               
