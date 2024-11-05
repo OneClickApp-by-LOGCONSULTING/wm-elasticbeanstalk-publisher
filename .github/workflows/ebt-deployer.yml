@@ -87,7 +87,7 @@ jobs:
             exit 1
           fi   
           echo  "grep '$SEARCH_STRING' $PROPERTIES_FILE"
-          grep "'$SEARCH_STRING'" $PROPERTIES_FILE
+          grep -i --count '$SEARCH_STRING' $PROPERTIES_FILE
           
           # if sed -n "/$SEARCH_STRING/p" "$PROPERTIES_FILE"; then
           #   echo "❌ String '$SEARCH_STRING' is present in $PROPERTIES_FILE."               
