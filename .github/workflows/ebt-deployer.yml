@@ -80,24 +80,23 @@ jobs:
         run: |
           PROPERTIES_FILE="${{ inputs.wm-profile }}.properties"
           SEARCH_STRING="wavemakeronline.com"
-          cd profiles          
-          # Search for the string in the properties file
-          if grep -q "$SEARCH_STRING" "$PROPERTIES_FILE"; then
-            echo "✅ String '$SEARCH_STRING' NOT found in $PROPERTIES_FILE."
-            echo "found=false" >> $GITHUB_ENV      
-            STRING_FOUND=false
-          else
-            echo "found=true" >> $GITHUB_ENV  # Store a success flag for later use
-            # Print the content of the file where the string was found, with the string highlighted
-            # echo "=== Contents of $PROPERTIES_FILE ==="
-            # grep --color=always "$SEARCH_STRING" "$PROPERTIES_FILE"
-            # echo "=========================="
-            STRING_FOUND=true
-          fi
-          if [ "$STRING_FOUND" = true ]; then
-            echo "❌ String '$SEARCH_STRING' found in any properties file."
+          cd profiles
+          # Check if the file exists
+          if [ ! -f "$PROPERTIES_FILE" ]; then
+            echo "❌ The properties file $PROPERTIES_FILE does not exist."
             exit 1
           fi
+          # Search for the string in the properties file
+          if grep -q "$SEARCH_STRING" "$PROPERTIES_FILE"; then
+            echo "✅ String '$SEARCH_STRING' found in $PROPERTIES_FILE."               
+            echo "=== Contents of $PROPERTIES_FILE ==="
+            grep --color=always "$SEARCH_STRING" "$PROPERTIES_FILE"
+            echo "=========================="
+          else       
+            echo "❌ String '$SEARCH_STRING'  found in $PROPERTIES_FILE."
+            exit 1
+          fi
+        
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
