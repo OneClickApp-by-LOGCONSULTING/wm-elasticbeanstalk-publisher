@@ -86,8 +86,8 @@ jobs:
             echo "❌ The properties file $PROPERTIES_FILE does not exist."
             exit 1
           fi   
-          echo  "grep '$SEARCH_STRING' $PROPERTIES_FILE"
-          grep  --color=always -Ei -n '$SEARCH_STRING' $PROPERTIES_FILE
+          echo  grep  --color=always -Ei -n \"$SEARCH_STRING\" \"$PROPERTIES_FILE\"
+          grep  --color=always -Ei -n "$SEARCH_STRING" "$PROPERTIES_FILE"
    
           
           # if sed -n "/$SEARCH_STRING/p" "$PROPERTIES_FILE"; then
