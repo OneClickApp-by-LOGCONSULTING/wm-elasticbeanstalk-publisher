@@ -80,7 +80,7 @@ jobs:
         run: |
           PROPERTIES_FILE="${{ inputs.wm-profile }}.properties"
           SEARCH_STRING="wavemakeronline.com"
-          cd /
+          ls
           cd profiles          
           # Search for the string in the properties file
           if grep -q "$SEARCH_STRING" "$PROPERTIES_FILE"; then
