@@ -80,7 +80,6 @@ jobs:
         run: |
           PROPERTIES_FILE="${{ inputs.wm-profile }}.properties"
           SEARCH_STRING="wavemakeronline.com"
-          ls
           cd profiles          
           # Search for the string in the properties file
           if grep -q "$SEARCH_STRING" "$PROPERTIES_FILE"; then
@@ -90,8 +89,8 @@ jobs:
             echo "❌ String '$SEARCH_STRING' found in $PROPERTIES_FILE."
             echo "found=true" >> $GITHUB_ENV  # Store a success flag for later use
             # Print the content of the file where the string was found, with the string highlighted
-            echo "=== Contents of $FILE ==="
-            grep --color=always "$SEARCH_STRING" "$FILE"  # Highlight the string in the file content
+            echo "=== Contents of $PROPERTIES_FILE ==="
+            grep --color=always "$SEARCH_STRING" "$PROPERTIES_FILE"  # Highlight the string in the file content
             echo "=========================="
             exit 1  # You can exit with status 1 to fail the job if the string is not found
           fi
