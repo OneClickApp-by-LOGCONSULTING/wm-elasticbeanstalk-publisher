@@ -1,4 +1,4 @@
-name: REUSABLE ACTION - Build and Deploy an WAVEMAKER application to Elastic Beanstalk
+name: REUSABLE ACTION - Build and Deploy an WAVEMAKER application to AWS Elastic Beanstalk
 # WAVEMAKER RELEASE NOTES https://docs.wavemaker.com/learn/wavemaker-release-notes/
 
 on:
@@ -112,7 +112,9 @@ jobs:
       - name: Upload the WAR file to AWS
         env:
           TIME: "${{ steps.time.outputs.time }}"
+          GITHUB_REPOSITORY: "${{ github.repository }}"
         run: |        
+          REPO_NAME=$(basename $GITHUB_REPOSITORY)
           cp /home/runner/work/$REPO_NAME/target/${{ inputs.wm-app-name }}.war ${{ inputs.wm-app-name }}.war
           mkdir .ebextensions
           cp  ${{ github.workspace }}/log-streaming.config .ebextensions 
