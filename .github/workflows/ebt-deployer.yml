@@ -86,6 +86,7 @@ jobs:
             echo "❌ The properties file $PROPERTIES_FILE does not exist."
             exit 1
           fi   
+          sed "s/$SEARCH_STRING/\x1b[31m&\x1b[39m/g" "$PROPERTIES_FILE"  
           if sed -n "/$SEARCH_STRING/p" "$PROPERTIES_FILE"; then
             echo "❌ String '$SEARCH_STRING' is present in $PROPERTIES_FILE."               
             echo "=== Contents of $PROPERTIES_FILE ==="
