@@ -87,14 +87,14 @@ jobs:
             exit 1
           fi
           # Search for the string in the properties file
-          if grep -q "$SEARCH_STRING" "$PROPERTIES_FILE"; then
+          if grep "$SEARCH_STRING" "$PROPERTIES_FILE"; then
             echo "✅ String '$SEARCH_STRING' found in $PROPERTIES_FILE."               
             echo "=== Contents of $PROPERTIES_FILE ==="
             grep --color=always "$SEARCH_STRING" "$PROPERTIES_FILE"
             echo "=========================="
           else       
-            echo "❌ String '$SEARCH_STRING'  found in $PROPERTIES_FILE."
             grep  "$SEARCH_STRING" "$PROPERTIES_FILE"
+            echo "❌ String '$SEARCH_STRING'  found in $PROPERTIES_FILE."
           fi
         
 
