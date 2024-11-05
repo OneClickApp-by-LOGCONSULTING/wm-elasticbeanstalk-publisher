@@ -88,16 +88,16 @@ jobs:
           fi   
           
           grep  --color=always -i -n "$SEARCH_STRING" "$PROPERTIES_FILE"
-   
-          
-          # if sed -n "/$SEARCH_STRING/p" "$PROPERTIES_FILE"; then
-          #   echo "❌ String '$SEARCH_STRING' is present in $PROPERTIES_FILE."               
-          #   echo "=== Contents of $PROPERTIES_FILE ==="
-          #   sed "s/$SEARCH_STRING/\x1b[31m&\x1b[39m/g" "$PROPERTIES_FILE"  
-          #   echo "=========================="
-          # else 
-          #   echo "✅ String '$SEARCH_STRING' is NOT present in $PROPERTIES_FILE."
-          # fi
+           
+          if grep -q -i "$SEARCH_STRING" "$PROPERTIES_FILE"; then
+            echo "❌ String '$SEARCH_STRING' is present in $PROPERTIES_FILE."               
+            echo "=== Contents of $PROPERTIES_FILE ==="
+            grep  --color=always -i -n "$SEARCH_STRING" "$PROPERTIES_FILE"
+            echo "=========================="
+            exit 1
+          else 
+            echo "✅ String '$SEARCH_STRING' is NOT present in $PROPERTIES_FILE."
+          fi
         
 
       - name: Setup Node.js
