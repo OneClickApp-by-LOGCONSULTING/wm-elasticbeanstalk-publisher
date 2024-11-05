@@ -88,7 +88,7 @@ jobs:
           fi
           echo "=== Contents of $PROPERTIES_FILE ==="
             # Use 'grep' with --color=always for highlighting
-            grep --color=always -n "$SEARCH_STRING" "$PROPERTIES_FILE" || true
+            grep --color=always -n "$SEARCH_STRING" "$PROPERTIES_FILE"  
             echo "=========================="
           # Search for the string in the properties file
           # if grep "$SEARCH_STRING" "$PROPERTIES_FILE"; then
