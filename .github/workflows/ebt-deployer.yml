@@ -1,0 +1,116 @@
+name: REUSABLE ACTION - Build and Deploy an WAVEMAKER application to Elastic Beanstalk
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        required: false
+        type: string
+        default: '18.16.1'  # Valore di default per Node.js
+      maven-version:
+        required: false
+        type: string
+        default: '3.9.9'  # Valore di default per Maven
+      java-version:
+        required: false
+        type: string
+        default: '21'  # Valore di default per Java
+      aws-region:
+        required: false
+        type: string
+        default: 'eu-south-1'  # Valore di default per la regione AWS
+      aws-access-key-id:
+        required: true
+        type: string
+      aws-secret-access-key:
+        required: true
+        type: string
+      environment-name:
+        required: true
+        type: string
+      app-name:
+        required: false
+        type: string
+        default: 'OneClickApp'  # Valore di default per il nome dell'applicazione
+
+jobs:
+  build:
+    name: Build and Deploy WM to AWS Elastic Beanstalk
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+
+    steps:
+      - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
+      - run: echo "🐧 This job is now running on a ${{ runner.os }} server hosted by GitHub!"
+      - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
+
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Setup Maven Action
+        uses: s4u/setup-maven-action@v1.14.0
+        with:
+          java-version: ${{ inputs.java-version }}
+          maven-version: ${{ inputs.maven-version }}
+          java-distribution: 'corretto'
+
+      - name: Enable Maven caching
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2
+
+      - name: Check build environment versions (GIT, MAVEN, NPM, NODE, ANT)
+        run: |
+          git --version
+          mvn -version
+          npm --version
+          node --version
+          ant --version
+
+      - name: Create the WAR after running the tests
+        run: mvn clean install -Pprod -X -e
+
+      - name: wget a sample WAR file
+        uses: wei/wget@v1
+        with:
+          args: -O ROOT.war https://tomcat.apache.org/tomcat-10.0-doc/appdev/sample/sample.war
+
+      - name: Get the current time
+        id: time
+        uses: nanzm/get-time-action@v1.1
+        with:
+          timeZone: 0
+          format: 'YYYY-MM-DD-HH-mm-ss'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ inputs.aws-access-key-id }}
+          aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Upload the WAR file to AWS
+        env:
+          TIME: "${{ steps.time.outputs.time }}"
+        run: |
+          cp /home/runner/work/${{ github.repository }}/target/${{ inputs.app-name }}.war ${{ inputs.app-name }}.war
+          mkdir .ebextensions
+          cp  ${{ github.workspace }}/log-streaming.config .ebextensions 
+          cd .ebextensions
+          ls
+          cd ..
+          zip ${{ inputs.app-name }}-ebt_deployer-$TIME.zip ROOT.war ${{ inputs.app-name }}.war .ebextensions/log-streaming.config
+          unzip -l ${{ inputs.app-name }}-ebt_deployer-$TIME.zip
+          aws s3 cp ${{ inputs.app-name }}-ebt_deployer-$TIME.zip s3://acy-deployer-packages-eu-south-1/ --region ${{ inputs.aws-region }}
+          aws elasticbeanstalk create-application-version --application-name ${{ inputs.app-name }} --version-label ${{ inputs.app-name }}-$TIME --source-bundle S3Bucket="acy-deployer-packages-eu-south-1",S3Key="${{ inputs.app-name }}-ebt_deployer-$TIME.zip" --no-auto-create-application --region ${{ inputs.aws-region }}
+          aws elasticbeanstalk update-environment --environment-name ${{ inputs.environment-name }} --version-label ${{ inputs.app-name }}-$TIME --region ${{ inputs.aws-region }}
