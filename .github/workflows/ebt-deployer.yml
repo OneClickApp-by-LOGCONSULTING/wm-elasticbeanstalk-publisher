@@ -39,6 +39,10 @@ on:
         required: true
         type: string
         default: ''
+      aws-s3-bucket-region:
+        required: true
+        type: string
+        default: 'eu-south-1'
     secrets:
        aws-access-key-id: # AWS AccessKey
         required: true      
@@ -130,6 +134,6 @@ jobs:
           zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war ${{ inputs.wm-app-name }}.war 
 #          .ebextensions/log-streaming.config
           unzip -l ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip
-          aws s3 cp ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip s3://${{ inputs.aws-s3-bucket-name }}/ --region ${{ inputs.aws-region }}
+          aws s3 cp ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip s3://${{ inputs.aws-s3-bucket-name }}/ --region ${{ inputs.aws-s3-bucket-region }}
           aws elasticbeanstalk create-application-version --application-name ${{ inputs.beanstalk-application-name }} --version-label ${{ inputs.wm-app-name }}-$TIME --source-bundle S3Bucket="${{ inputs.aws-s3-bucket-name }}",S3Key="${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip" --no-auto-create-application --region ${{ inputs.aws-region }}
           aws elasticbeanstalk update-environment --environment-name ${{ inputs.environment-name }} --version-label ${{ inputs.wm-app-name }}-$TIME --region ${{ inputs.aws-region }}
