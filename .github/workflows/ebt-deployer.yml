@@ -79,7 +79,7 @@ jobs:
         id: check_string_in_properties
         run: |
           PROPERTIES_FILE="${{ inputs.wm-profile }}.properties"
-          SEARCH_STRING="rreretrt"
+          SEARCH_STRING="prefab"
           cd profiles
           # Check if the file exists
           if [ ! -f "$PROPERTIES_FILE" ]; then
