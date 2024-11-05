@@ -30,7 +30,11 @@ on:
       beanstalk-application-name: #AWS ElasticBeanstalk Application name
         required: false
         type: string
-        default: 'OneClickApp'  
+        default: 'OneClickApp'
+      wm-profile:
+        required: true
+        type: string
+        default: 'prod'
     secrets:
        aws-access-key-id: # AWS AccessKey
         required: true      
@@ -88,7 +92,7 @@ jobs:
          
 
       - name: Create the WAR after running the tests
-        run: mvn clean install -Pprod -X -e
+        run: mvn clean install -P${{ inputs.wm-profile }} -X -e
 
       - name: wget a sample WAR file
         uses: wei/wget@v1
