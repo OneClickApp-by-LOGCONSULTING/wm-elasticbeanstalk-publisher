@@ -69,6 +69,22 @@ jobs:
 
       - run: echo "💡 The $REPO_NAME repository has been cloned to the runner."
 
+      - name: Check if a wavemakeronline.com string exists in the wm-profile properties file
+        id: check_string_in_properties
+        run: |
+          PROPERTIES_FILE="path/to/your/${{ inputs.wm-profile }}.properties"
+          SEARCH_STRING="wavemakeronline.com"
+          
+          # Search for the string in the properties file
+          if grep -q "$SEARCH_STRING" "$PROPERTIES_FILE"; then
+            echo "❌ String '$SEARCH_STRING' NOT found in $PROPERTIES_FILE."
+            echo "found=false" >> $GITHUB_ENV  # Store a failure flag
+            exit 1  # You can exit with status 1 to fail the job if the string is not found
+          else           
+            echo "✅ String '$SEARCH_STRING' found in $PROPERTIES_FILE."
+            echo "found=true" >> $GITHUB_ENV  # Store a success flag for later use
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
