@@ -92,9 +92,8 @@ jobs:
             echo "=== Contents of $PROPERTIES_FILE ==="
             sed "s/$SEARCH_STRING/\x1b[31m&\x1b[39m/g" "$PROPERTIES_FILE"  
             echo "=========================="
-          else       
-            grep  "$SEARCH_STRING" "$PROPERTIES_FILE"
-            echo "✅ String '$SEARCH_STRING'  found in $PROPERTIES_FILE."
+          else 
+            echo "✅ String '$SEARCH_STRING' is note present in $PROPERTIES_FILE."
           fi
         
 
