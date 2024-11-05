@@ -79,16 +79,13 @@ jobs:
         id: check_string_in_properties
         run: |
           PROPERTIES_FILE="${{ inputs.wm-profile }}.properties"
-          SEARCH_STRING="mamamamama"
+          SEARCH_STRING="prefab"
           cd profiles
           # Check if the file exists
           if [ ! -f "$PROPERTIES_FILE" ]; then
             echo "❌ The properties file $PROPERTIES_FILE does not exist."
             exit 1
           fi   
-          
-          grep  --color=always -i -n "$SEARCH_STRING" "$PROPERTIES_FILE"
-           
           if grep -q -i "$SEARCH_STRING" "$PROPERTIES_FILE"; then
             echo "❌ String '$SEARCH_STRING' is present in $PROPERTIES_FILE."               
             echo "=== Contents of $PROPERTIES_FILE ==="
