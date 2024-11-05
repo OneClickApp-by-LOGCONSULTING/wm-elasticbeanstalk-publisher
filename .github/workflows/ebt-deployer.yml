@@ -94,7 +94,7 @@ jobs:
             echo "=========================="
           else       
             echo "❌ String '$SEARCH_STRING'  found in $PROPERTIES_FILE."
-            grep --color=always "$SEARCH_STRING" "$PROPERTIES_FILE"
+            grep  "$SEARCH_STRING" "$PROPERTIES_FILE"
           fi
         
 
