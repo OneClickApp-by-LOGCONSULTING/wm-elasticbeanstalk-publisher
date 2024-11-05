@@ -28,7 +28,11 @@ on:
       environment-name:
         required: true
         type: string
-      app-name:
+      wm-app-name:
+        required: false
+        type: string
+        default: 'OneClickApp'  # Valore di default per il nome dell'applicazione
+      beanstalk-application-name:
         required: false
         type: string
         default: 'OneClickApp'  # Valore di default per il nome dell'applicazione
@@ -103,14 +107,14 @@ jobs:
         env:
           TIME: "${{ steps.time.outputs.time }}"
         run: |
-          cp /home/runner/work/${{ github.repository }}/target/${{ inputs.app-name }}.war ${{ inputs.app-name }}.war
+          cp /home/runner/work/${{ github.repository }}/target/${{ inputs.wm-app-name }}.war ${{ inputs.wm-app-name }}.war
           mkdir .ebextensions
           cp  ${{ github.workspace }}/log-streaming.config .ebextensions 
           cd .ebextensions
           ls
           cd ..
-          zip ${{ inputs.app-name }}-ebt_deployer-$TIME.zip ROOT.war ${{ inputs.app-name }}.war .ebextensions/log-streaming.config
-          unzip -l ${{ inputs.app-name }}-ebt_deployer-$TIME.zip
-          aws s3 cp ${{ inputs.app-name }}-ebt_deployer-$TIME.zip s3://acy-deployer-packages-eu-south-1/ --region ${{ inputs.aws-region }}
-          aws elasticbeanstalk create-application-version --application-name ${{ inputs.app-name }} --version-label ${{ inputs.app-name }}-$TIME --source-bundle S3Bucket="acy-deployer-packages-eu-south-1",S3Key="${{ inputs.app-name }}-ebt_deployer-$TIME.zip" --no-auto-create-application --region ${{ inputs.aws-region }}
-          aws elasticbeanstalk update-environment --environment-name ${{ inputs.environment-name }} --version-label ${{ inputs.app-name }}-$TIME --region ${{ inputs.aws-region }}
+          zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war ${{ inputs.wm-app-name }}.war .ebextensions/log-streaming.config
+          unzip -l ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip
+          aws s3 cp ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip s3://acy-deployer-packages-eu-south-1/ --region ${{ inputs.aws-region }}
+          aws elasticbeanstalk create-application-version --application-name ${{ inputs.beanstalk-application-name }} --version-label ${{ inputs.wm-app-name }}-$TIME --source-bundle S3Bucket="acy-deployer-packages-eu-south-1",S3Key="${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip" --no-auto-create-application --region ${{ inputs.aws-region }}
+          aws elasticbeanstalk update-environment --environment-name ${{ inputs.environment-name }} --version-label ${{ inputs.wm-app-name }}-$TIME --region ${{ inputs.aws-region }}
