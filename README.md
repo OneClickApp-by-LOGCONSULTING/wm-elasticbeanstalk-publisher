@@ -1,66 +1,66 @@
-# REUSABLE ACTION - Build and Deploy an WAVEMAKER application to AWS Elastic Beanstalk
+# REUSABLE ACTION - Build and Deploy a WAVEMAKER application to AWS Elastic Beanstalk
 
-Questa Action GitHub è progettata per costruire e distribuire un'applicazione WAVEMAKER su AWS Elastic Beanstalk. La pipeline automatizza il processo di compilazione dell'applicazione WAVEMAKER, il caricamento del file WAR su AWS S3, e la distribuzione su un ambiente Elastic Beanstalk specificato.
+This GitHub Action is designed to build and deploy a WAVEMAKER application to AWS Elastic Beanstalk. The pipeline automates the process of building the WAVEMAKER application, uploading the WAR file to AWS S3, and deploying it to a specified Elastic Beanstalk environment.
 
-## Flusso di Lavoro
+## Workflow
 
 ### Trigger
-Questa action è configurata per essere chiamata tramite un altro workflow (`workflow_call`), il che significa che può essere riutilizzata in diversi contesti.
+This action is configured to be called from another workflow (`workflow_call`), meaning it can be reused in different contexts.
 
-### Input
-La action accetta i seguenti parametri di input:
+### Inputs
+The action accepts the following input parameters:
 
-- **node-version** (opzionale): Versione di Node.js da utilizzare, valore predefinito `18.16.1`.
-- **maven-version** (opzionale): Versione di Maven, valore predefinito `3.9.9`.
-- **java-version** (opzionale): Versione di Java da utilizzare per compilare l'applicazione, valore predefinito `21`.
-- **aws-region** (opzionale): Regione AWS, valore predefinito `eu-south-1`.
-- **environment-name** (obbligatorio): Nome dell'ambiente Elastic Beanstalk in cui distribuire l'applicazione.
-- **wm-app-name** (opzionale): Nome dell'applicazione WAVEMAKER, valore predefinito `OneClickApp`.
-- **beanstalk-application-name** (opzionale): Nome dell'applicazione AWS Elastic Beanstalk, valore predefinito `OneClickApp`.
-- **wm-profile** (obbligatorio): Profilo di configurazione WAVEMAKER (es. `prod`).
-- **aws-s3-bucket-name** (obbligatorio): Nome del bucket S3 su cui caricare il file WAR.
-- **aws-s3-bucket-region** (obbligatorio): Regione AWS del bucket S3, valore predefinito `eu-south-1`.
+- **node-version** (optional): The version of Node.js to use, default is `18.16.1`.
+- **maven-version** (optional): The version of Maven to use, default is `3.9.9`.
+- **java-version** (optional): The version of Java to use for building the application, default is `21`.
+- **aws-region** (optional): The AWS region to use, default is `eu-south-1`.
+- **environment-name** (required): The name of the Elastic Beanstalk environment to deploy the application.
+- **wm-app-name** (optional): The name of the WAVEMAKER application, default is `OneClickApp`.
+- **beanstalk-application-name** (optional): The name of the AWS Elastic Beanstalk application, default is `OneClickApp`.
+- **wm-profile** (required): The WAVEMAKER configuration profile (e.g., `prod`).
+- **aws-s3-bucket-name** (required): The name of the S3 bucket to upload the WAR file.
+- **aws-s3-bucket-region** (required): The AWS region of the S3 bucket, default is `eu-south-1`.
 
 ### Secrets
-La action richiede i seguenti segreti per poter interagire con AWS:
+The action requires the following secrets to interact with AWS:
 
-- **aws-access-key-id**: Chiave di accesso AWS.
-- **aws-secret-access-key**: Chiave segreta AWS.
+- **aws-access-key-id**: The AWS Access Key ID.
+- **aws-secret-access-key**: The AWS Secret Access Key.
 
-### Passaggi della Job
+### Job Steps
 
-1. **Checkout del repository**:
-   La codebase del repository viene clonata sulla macchina virtuale di GitHub.
+1. **Checkout the repository**:
+   The repository code is cloned to the GitHub runner.
 
-2. **Verifica del file di configurazione WAVEMAKER**:
-   Viene controllato il file di proprietà per assicurarsi che non contenga riferimenti a `wavemakeronline.com`, evitando di eseguire accidentalmente una distribuzione in un ambiente di produzione.
+2. **Verify the WAVEMAKER configuration file**:
+   The action checks the properties file to ensure it doesn't contain references to `wavemakeronline.com` to avoid accidental deployment to production.
 
-3. **Setup di Node.js e Maven**:
-   La action configura Node.js (usando la versione specificata o quella predefinita) e Maven, incluso il caching dei pacchetti Maven per migliorare le prestazioni delle build successive.
+3. **Setup Node.js and Maven**:
+   The action configures Node.js (using the specified or default version) and Maven, including caching Maven dependencies for improved build performance on subsequent runs.
 
-4. **Controllo delle versioni**:
-   Vengono stampate le versioni di Git, Maven, NPM, Node.js per verificare l'ambiente di build.
+4. **Check version environments**:
+   The action prints the versions of Git, Maven, NPM, and Node.js to verify the build environment.
 
-5. **Compilazione del WAR**:
-   Esegue `mvn clean install` per costruire l'applicazione WAVEMAKER con il profilo specificato.
+5. **Build the WAR file**:
+   The `mvn clean install` command is executed to build the WAVEMAKER application using the specified profile.
 
-6. **Download di un WAR di esempio**:
-   Viene scaricato un file WAR di esempio (ROOT.war) da Tomcat per scopi dimostrativi.
+6. **Download a sample WAR file**:
+   A sample WAR file (`ROOT.war`) is downloaded from Tomcat for demonstration purposes.
 
-7. **Configurazione delle credenziali AWS**:
-   Vengono configurate le credenziali AWS utilizzando le chiavi di accesso fornite tramite i segreti.
+7. **Configure AWS credentials**:
+   The action configures AWS credentials using the provided access keys via secrets.
 
-8. **Caricamento su S3 e distribuzione su Elastic Beanstalk**:
-   - Il file WAR risultante (creato dalla build Maven) viene caricato su un bucket S3.
-   - Viene creata una nuova versione dell'applicazione Elastic Beanstalk utilizzando il WAR caricato e aggiornato l'ambiente con questa versione.
+8. **Upload to S3 and deploy to Elastic Beanstalk**:
+   - The resulting WAR file (built via Maven) is uploaded to an S3 bucket.
+   - A new Elastic Beanstalk application version is created using the uploaded WAR file, and the environment is updated with this version.
 
-### Esecuzione e Output
+### Execution and Output
 
-- L'Action stampa diversi messaggi di log per monitorare lo stato del processo e fornisce feedback sulla creazione, caricamento e distribuzione dell'applicazione.
-- Il file WAR viene compresso in un pacchetto ZIP prima di essere caricato su S3 e distribuito tramite Elastic Beanstalk.
+- The action logs various status messages throughout the process, providing feedback on the creation, upload, and deployment of the application.
+- The WAR file is zipped before being uploaded to S3 and deployed via Elastic Beanstalk.
 
-## Note Importanti
-- Assicurati che la configurazione delle credenziali AWS e la regione AWS siano correttamente configurate per l'account e l'ambiente di destinazione.
-- Il nome del bucket S3 e il nome dell'applicazione Elastic Beanstalk devono essere specificati per garantire che il processo di caricamento e distribuzione funzioni correttamente.
+## Important Notes
+- Ensure that the AWS credentials configuration and AWS region are correctly set for the target account and environment.
+- The S3 bucket name and the Elastic Beanstalk application name must be specified for the upload and deployment process to work properly.
 
-Per maggiori dettagli sulle release di WAVEMAKER, consulta le [WAVEMAKER Release Notes](https://docs.wavemaker.com/learn/wavemaker-release-notes/).
+For more details on WAVEMAKER releases, check the [WAVEMAKER Release Notes](https://docs.wavemaker.com/learn/wavemaker-release-notes/).
