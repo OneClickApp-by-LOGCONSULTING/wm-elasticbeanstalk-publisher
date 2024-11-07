@@ -1,0 +1,52 @@
+name: Checkstyle Analysis Workflow
+
+on:
+  workflow_call:  # Trigger che permette di invocare questo workflow da altri flussi
+    inputs:
+      java-version:
+        description: 'Versione di Java da utilizzare'
+        required: false
+        type: string
+        default: '21'  # Impostazione predefinita per Java 21
+      checkstyle-config:
+        description: 'Percorso al file di configurazione di Checkstyle'
+        required: false
+        default: 'config/checkstyle/checkstyle.xml'  # Percorso predefinito per il file di configurazione
+        type: string
+
+jobs:
+  checkstyle:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Java
+        uses: actions/setup-java@v2
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: 'adoptopenjdk'
+
+      - name: Download Checkstyle
+        run: |
+          curl -L -o checkstyle.jar https://github.com/checkstyle/checkstyle/releases/download/checkstyle-10.0/checkstyle-10.0-all.jar
+
+      - name: Esegui Checkstyle e genera report HTML
+        run: |
+          mkdir -p checkstyle-reports  # Crea la directory per i report HTML
+          java -jar checkstyle.jar -c ${{ inputs.checkstyle-config }} -f html -o checkstyle-reports/checkstyle-report.html **/*.java  # Esegui Checkstyle con formato HTML
+
+      - name: Upload Checkstyle HTML Report as Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: checkstyle-html-report
+          path: checkstyle-reports/checkstyle-report.html
+
+      - name: Controlla gli errori di Checkstyle
+        run: |
+          if grep -q "CHECKSTYLE" checkstyle-reports/checkstyle-report.html; then
+            echo "Checkstyle issues found. Please fix the issues." && exit 1
+          else
+            echo "No Checkstyle issues found."
+          fi
