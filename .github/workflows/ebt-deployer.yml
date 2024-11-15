@@ -176,7 +176,7 @@ jobs:
             echo "Keeping original wm-app-name case"
             cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war $WM_APP_NAME.war
           fi
-          dir .ebextensions 
+          mkdir .ebextensions 
           cd .ebextensions
           ls
           cd ..
