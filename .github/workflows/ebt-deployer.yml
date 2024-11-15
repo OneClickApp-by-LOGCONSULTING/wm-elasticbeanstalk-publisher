@@ -151,13 +151,21 @@ jobs:
           aws-access-key-id: ${{ secrets.aws-access-key-id }}
           aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
           aws-region: ${{ inputs.aws-region }}
+      - name: Set default for use-lowercase if empty
+        run: |
+          if [ -z "${{ inputs.use-lowercase }}" ]; then
+            echo "use-lowercase is empty, defaulting to false."
+            echo "USE_LOWERCASE=false" >> $GITHUB_ENV
+          else
+            echo "USE_LOWERCASE=${{ inputs.use-lowercase }}" >> $GITHUB_ENV
+          fi     
 
       - name: Upload the WAR file to AWS
         env:
           TIME: "${{ steps.time.outputs.time }}"
           GITHUB_REPOSITORY: "${{ github.repository }}"
         run: |        
-          if [ "${{ inputs.use-lowercase }}" == "true" ]; then
+          if [ "$USE_LOWERCASE" == "true" ]; then
             echo "Converting wm-app-name to lowercase"
             LOWERCASE_NAME=$(echo "${{ inputs.wm-app-name }}" | tr '[:upper:]' '[:lower:]')
             cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war $LOWERCASE_NAME.war
