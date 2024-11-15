@@ -27,6 +27,10 @@ on:
         required: false
         type: string
         default: 'OneClickApp'  
+      force-lowercase-wm-app-name: # Wavemaker application version
+        required: false
+        type: boolean
+        default: false
       beanstalk-application-name: #AWS ElasticBeanstalk Application name
         required: false
         type: string
@@ -153,8 +157,14 @@ jobs:
           TIME: "${{ steps.time.outputs.time }}"
           GITHUB_REPOSITORY: "${{ github.repository }}"
         run: |        
-          REPO_NAME=$(basename $GITHUB_REPOSITORY)
-          cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war ${{ inputs.wm-app-name }}.war
+          if ${{ inputs.use-lowercase }}; then
+            echo "Converting wm-app-name to lowercase"
+            LOWERCASE_NAME=$(echo "${{ inputs.wm-app-name }}" | tr '[:upper:]' '[:lower:]')
+            cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war $LOWERCASE_NAME.war
+          else
+            echo "Keeping original wm-app-name case"
+            cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war ${{ inputs.wm-app-name }}.war
+          fi
           mkdir .ebextensions 
           cd .ebextensions
           ls
