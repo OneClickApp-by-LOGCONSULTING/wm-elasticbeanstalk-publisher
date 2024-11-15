@@ -167,19 +167,20 @@ jobs:
           GITHUB_REPOSITORY: "${{ github.repository }}"
         run: |        
           REPO_NAME=${{ github.event.repository.name }}
+          WM_APP_NAME=${{ inputs.wm-app-name }}
           if [ "$USE_LOWERCASE" == "true" ]; then
             echo "Converting wm-app-name to lowercase"
-            LOWERCASE_NAME=$(echo "${{ inputs.wm-app-name }}" | tr '[:upper:]' '[:lower:]')
-            cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war $LOWERCASE_NAME.war
+            WM_APP_NAME=$(echo "${{ inputs.wm-app-name }}" | tr '[:upper:]' '[:lower:]')
+            cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war $WM_APP_NAME.war
           else
             echo "Keeping original wm-app-name case"
-            cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war ${{ inputs.wm-app-name }}.war
+            cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war $WM_APP_NAME.war
           fi
-          mkdir .ebextensions 
-          cd .ebextensions
+          # kdir .ebextensions 
+          # cd .ebextensions
           ls
           cd ..
-          zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war ${{ inputs.wm-app-name }}.war  
+          zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war $WM_APP_NAME.war
           unzip -l ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip
           aws s3 cp ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip s3://${{ inputs.aws-s3-bucket-name }}/ --region ${{ inputs.aws-s3-bucket-region }}
           aws elasticbeanstalk create-application-version --application-name ${{ inputs.beanstalk-application-name }} --version-label ${{ inputs.wm-app-name }}-$TIME --source-bundle S3Bucket="${{ inputs.aws-s3-bucket-name }}",S3Key="${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip" --no-auto-create-application --region ${{ inputs.aws-region }}
