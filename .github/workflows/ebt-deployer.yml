@@ -157,7 +157,7 @@ jobs:
           TIME: "${{ steps.time.outputs.time }}"
           GITHUB_REPOSITORY: "${{ github.repository }}"
         run: |        
-          if ${{ inputs.use-lowercase }}; then
+          if [ "${{ inputs.use-lowercase }}" == "true" ]; then
             echo "Converting wm-app-name to lowercase"
             LOWERCASE_NAME=$(echo "${{ inputs.wm-app-name }}" | tr '[:upper:]' '[:lower:]')
             cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war $LOWERCASE_NAME.war
