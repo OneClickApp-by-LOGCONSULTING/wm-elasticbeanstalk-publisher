@@ -176,8 +176,8 @@ jobs:
             echo "Keeping original wm-app-name case"
             cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war $WM_APP_NAME.war
           fi
-          # kdir .ebextensions 
-          # cd .ebextensions
+          kdir .ebextensions 
+          cd .ebextensions
           ls
           cd ..
           zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war $WM_APP_NAME.war
