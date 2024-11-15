@@ -1,0 +1,83 @@
+name: SLSA Provenance Generation and Verification
+
+on:
+  workflow_call:
+    inputs:
+      language:
+        description: "The project language (maven, javascript, typescript)."
+        required: true
+        type: string
+      artifact_path:
+        description: "The path to the generated artifacts."
+        required: true
+        type: string
+    secrets:
+      github_token:
+        required: true
+
+jobs:
+  generate-and-verify-slsa:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Java environment
+        if: ${{ inputs.language == 'maven' }}
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'corretto'
+          java-version: '21'
+
+      - name: Set up Node.js environment
+        if: ${{ inputs.language == 'javascript' || inputs.language == 'typescript' }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Install dependencies and build (Maven)
+        if: ${{ inputs.language == 'maven' }}
+        run: |
+          mvn clean package -DskipTests
+
+      - name: Install dependencies (JavaScript/TypeScript)
+        if: ${{ inputs.language == 'javascript' || inputs.language == 'typescript' }}
+        run: npm install
+
+      - name: Build project (JavaScript/TypeScript)
+        if: ${{ inputs.language == 'javascript' || inputs.language == 'typescript' }}
+        run: npm run build
+
+      - name: Generate SLSA Provenance
+        uses: slsa-framework/slsa-github-generator@v1
+        with:
+          artifact_path: ${{ inputs.artifact_path }}
+          version: ${{ github.ref_name }}
+
+      - name: Verify SLSA Provenance and Generate Report
+        run: |
+          curl -Lo slsa-verifier https://github.com/slsa-framework/slsa-verifier/releases/latest/download/slsa-verifier-linux-amd64
+          chmod +x slsa-verifier
+          ./slsa-verifier verify-artifact \
+            --provenance ${{ inputs.artifact_path }}/target/*.slsa.json \
+            --source github.com/${{ github.repository }} \
+            --builder-id https://github.com/slsa-framework/slsa-github-generator \
+            ${{ inputs.artifact_path }}/target/*.jar > verification_output.txt 2>&1
+          echo "<html><body><h2>Report di Verifica SLSA</h2><pre>" > slsa_verification_report.html
+          cat verification_output.txt >> slsa_verification_report.html
+          echo "</pre></body></html>" >> slsa_verification_report.html
+
+      - name: Upload HTML Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: slsa-verification-report
+          path: slsa_verification_report.html
+
+      - name: Upload Provenance
+        uses: actions/upload-artifact@v3
+        with:
+          name: slsa-provenance
+          path: |
+            ${{ inputs.artifact_path }}/target/*.slsa.json
+            ${{ inputs.artifact_path }}/dist/*.slsa.json
