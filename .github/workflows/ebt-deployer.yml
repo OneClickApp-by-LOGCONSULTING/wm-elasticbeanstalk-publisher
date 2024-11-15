@@ -157,7 +157,7 @@ jobs:
             echo " force-lowercase-wm-app-name is empty, defaulting to false."
             echo "USE_LOWERCASE=false" >> $GITHUB_ENV
           else
-            echo "USE_LOWERCASE=${{ inputs.use-lowercase }}" >> $GITHUB_ENV
+            echo "USE_LOWERCASE=true" >> $GITHUB_ENV
           fi     
 
       - name: Upload the WAR file to AWS
