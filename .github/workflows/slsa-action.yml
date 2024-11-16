@@ -28,7 +28,7 @@ jobs:
           fi
           mkdir -p ${{ env.artifact_path }}
 
-      # Step 2: Build and Generate Provenance for Maven 
+      # Step 2: Build and Generate Provenance for Maven
       - name: Set up Java environment
         uses: actions/setup-java@v4
         with:
@@ -55,4 +55,50 @@ jobs:
             ${{ env.artifact_path }}/maven/target/*.jar > maven_verification_output.txt 2>&1
           echo "<html><body><h2>Maven SLSA Verification Report</h2><pre>" > maven_verification_report.html
           cat maven_verification_output.txt >> maven_verification_report.html
-          echo "</pre></body></html>" >> maven_verification_re
+          echo "</pre></body></html>" >> maven_verification_report.html
+
+      # Step 3: Build and Generate Provenance for JavaScript/TypeScript
+      - name: Set up Node.js environment
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Build JavaScript/TypeScript project
+        run: |
+          npm install
+          npm run build
+
+      - name: Generate SLSA Provenance for JavaScript/TypeScript
+        uses: slsa-framework/slsa-github-generator/.github/workflows/builder_node_slsa3.yml@v2.0.0
+        with:
+          artifact_path: ${{ env.artifact_path }}/javascript
+          version: ${{ github.ref_name }}
+
+      - name: Verify SLSA Provenance for JavaScript/TypeScript
+        run: |
+          curl -Lo slsa-verifier https://github.com/slsa-framework/slsa-verifier/releases/latest/download/slsa-verifier-linux-amd64
+          chmod +x slsa-verifier
+          ./slsa-verifier verify-artifact \
+            --provenance ${{ env.artifact_path }}/javascript/dist/*.slsa.json \
+            --source github.com/${{ github.repository }} \
+            --builder-id https://github.com/slsa-framework/slsa-github-generator \
+            ${{ env.artifact_path }}/javascript/dist/*.js > javascript_verification_output.txt 2>&1
+          echo "<html><body><h2>JavaScript/TypeScript SLSA Verification Report</h2><pre>" > javascript_verification_report.html
+          cat javascript_verification_output.txt >> javascript_verification_report.html
+          echo "</pre></body></html>" >> javascript_verification_report.html
+
+      # Step 4: Organize all artifacts in a single directory
+      - name: Prepare artifact storage
+        run: |
+          mkdir -p ./artifact-storage
+          cp -r ${{ env.artifact_path }}/maven/target/* ./artifact-storage/
+          cp -r ${{ env.artifact_path }}/javascript/dist/* ./artifact-storage/
+          mv maven_verification_report.html ./artifact-storage/
+          mv javascript_verification_report.html ./artifact-storage/
+
+      # Step 5: Upload all artifacts
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: all-slsa-artifacts
+          path: ./artifact-storage/
