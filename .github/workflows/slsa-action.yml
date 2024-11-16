@@ -70,7 +70,7 @@ jobs:
         run: npm run build
 
       - name: Generate SLSA Provenance for JavaScript/TypeScript
-        uses: slsa-framework/slsa-github-generator@v1
+        uses: slsa-framework/slsa-github-generator@v2
         with:
           artifact_path: ${{ env.artifact_path }}/javascript
           version: ${{ github.ref_name }}
