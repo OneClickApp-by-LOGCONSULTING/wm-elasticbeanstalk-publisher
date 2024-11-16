@@ -79,9 +79,10 @@ jobs:
         run: |
           # Set up git configuration
           # Add SBOM to repository
-             # Set git user identity
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
+          # Set git user identity
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           git add ${{ env.artifact_path }}/maven/sbom.json
           git add ${{ env.artifact_path }}/javascript/sbom.json
           git commit -m "Add generated SBOM for project"
