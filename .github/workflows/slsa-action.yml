@@ -35,6 +35,8 @@ jobs:
             echo "artifact_path=${{ inputs.artifact_path }}" >> $GITHUB_ENV
             mkdir -p "${{ inputs.artifact_path }}"
           fi
+          mkdir -p "${{ inputs.artifact_path }}/maven"
+          mkdir -p "${{ inputs.artifact_path }}/javascript"
     
       - name: Setup Node.js
         uses: actions/setup-node@v3
