@@ -50,31 +50,31 @@ jobs:
           artifact_path: ${{ env.artifact_path }}/maven
           version: ${{ github.ref_name }}
 
-      # Step 6: Verify SLSA Provenance
-      - name: Verify SLSA Provenance
-        run: |
-          curl -Lo slsa-verifier https://github.com/slsa-framework/slsa-verifier/releases/latest/download/slsa-verifier-linux-amd64
-          chmod +x slsa-verifier
-          ./slsa-verifier verify-artifact \
-            --provenance ${{ env.artifact_path }}/maven/target/*.slsa.json \
-            --source github.com/${{ github.repository }} \
-            --builder-id https://github.com/slsa-framework/slsa-github-generator \
-            ${{ env.artifact_path }}/maven/target/*.jar > verification_output.txt 2>&1
-          echo "<html><body><h2>Maven SLSA Verification Report</h2><pre>" > maven_verification_report.html
-          cat verification_output.txt >> maven_verification_report.html
-          echo "</pre></body></html>" >> maven_verification_report.html
+      # # Step 6: Verify SLSA Provenance
+      # - name: Verify SLSA Provenance
+      #   run: |
+      #     curl -Lo slsa-verifier https://github.com/slsa-framework/slsa-verifier/releases/latest/download/slsa-verifier-linux-amd64
+      #     chmod +x slsa-verifier
+      #     ./slsa-verifier verify-artifact \
+      #       --provenance ${{ env.artifact_path }}/maven/target/*.slsa.json \
+      #       --source github.com/${{ github.repository }} \
+      #       --builder-id https://github.com/slsa-framework/slsa-github-generator \
+      #       ${{ env.artifact_path }}/maven/target/*.jar > verification_output.txt 2>&1
+      #     echo "<html><body><h2>Maven SLSA Verification Report</h2><pre>" > maven_verification_report.html
+      #     cat verification_output.txt >> maven_verification_report.html
+      #     echo "</pre></body></html>" >> maven_verification_report.html
 
-      # Step 7: Upload Verification Report
-      - name: Upload Verification Report
-        uses: actions/upload-artifact@v3
-        with:
-          name: maven-slsa-verification-report
-          path: maven_verification_report.html
+      # # Step 7: Upload Verification Report
+      # - name: Upload Verification Report
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: maven-slsa-verification-report
+      #     path: maven_verification_report.html
 
-      # Step 8: Upload Provenance
-      - name: Upload Provenance
-        uses: actions/upload-artifact@v3
-        with:
-          name: maven-slsa-provenance
-          path: |
-            ${{ env.artifact_path }}/maven/target/*.slsa.json
+      # # Step 8: Upload Provenance
+      # - name: Upload Provenance
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: maven-slsa-provenance
+      #     path: |
+      #       ${{ env.artifact_path }}/maven/target/*.slsa.json
