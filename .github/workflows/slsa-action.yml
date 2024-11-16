@@ -28,7 +28,7 @@ jobs:
           fi
           mkdir -p ${{ env.artifact_path }}
 
-      # Step 2: Build and Generate Provenance for Maven
+      # Step 2: Build and Generate Provenance for Maven 
       - name: Set up Java environment
         uses: actions/setup-java@v4
         with:
