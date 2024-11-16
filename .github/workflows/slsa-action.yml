@@ -16,27 +16,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # # Step 1: Set default artifact path if input is null
-      # - name: Set artifact path
-      #   id: set-artifact-path
-      #   run: |
-      #     DEFAULT_PATH="./default-artifacts"
-      #     if [ -z "${{ inputs.artifact_path }}" ]; then
-      #       echo "artifact_path=$DEFAULT_PATH" >> $GITHUB_ENV
-      #     else
-      #       echo "artifact_path=${{ inputs.artifact_path }}" >> $GITHUB_ENV
-      #     fi
-      #     mkdir -p ${{ env.artifact_path }}
+      # Step 1: Set default artifact path if input is null
+      - name: Set artifact path
+        id: set-artifact-path
+        run: |
+          DEFAULT_PATH="./default-artifacts"
+          if [ -z "${{ inputs.artifact_path }}" ]; then
+            echo "artifact_path=$DEFAULT_PATH" >> $GITHUB_ENV
+          else
+            echo "artifact_path=${{ inputs.artifact_path }}" >> $GITHUB_ENV
+          fi
+          mkdir -p ${{ env.artifact_path }}
 
-      # # Step 2: Build and Generate Provenance for Maven
-      # - name: Set up Java environment
-      #   uses: actions/setup-java@v4
-      #   with:
-      #     distribution: 'corretto'
-      #     java-version: '21'
+      # Step 2: Build and Generate Provenance for Maven
+      - name: Set up Java environment
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'corretto'
+          java-version: '21'
 
-      # - name: Build Maven project
-      #   run: mvn clean package -DskipTests
+      - name: Build Maven project
+        run: mvn clean package -DskipTests
 
       # - name: Generate SLSA Provenance for Maven
       #   uses: slsa-framework/slsa-github-generator/.github/workflows/builder_maven_slsa3.yml@v2.0.0
