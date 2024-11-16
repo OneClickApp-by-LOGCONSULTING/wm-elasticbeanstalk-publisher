@@ -51,6 +51,21 @@ jobs:
 
           # Generate SBOM for JavaScript/TypeScript (npm)
           sudo cdxgen -t npm -o ${{ env.artifact_path }}/javascript/sbom.json
+      - name: Commit and push SBOM to repository
+        run: |
+          # Set up git configuration
+          git config --global OneClickApp "info@oneclickapp.com"
+          git config --global OneClickApp "Your GitHub Actions Bot"
+          
+          # Add SBOM to repository
+          git add ${{ env.artifact_path }}/maven/sbom.json
+          git commit -m "Add generated SBOM for Maven project"
+          git push
+          git add ${{ env.artifact_path }}/javascript/sbom.json
+          git commit -m "Add generated SBOM for Maven project"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Step 3: Set up the Java environment
       - name: Set up Java environment
         uses: actions/setup-java@v4
