@@ -8,6 +8,10 @@ on:
         required: false
         type: string
         default: "./slsa-artifacts"
+      node-version:
+        required: false
+        type: string
+        default: '18.16.1'  # Default Node.js version
 
 jobs:
   generate-and-verify-slsa:
@@ -31,15 +35,20 @@ jobs:
             echo "artifact_path=${{ inputs.artifact_path }}" >> $GITHUB_ENV
             mkdir -p "${{ inputs.artifact_path }}"
           fi
+            - name: Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ inputs.node-version }}
       - name: Generate SBOM for Java and JavaScript/TypeScript
         run: |
           # Generate SBOM for Java (Maven)
-          curl -sSL https://cyclonedx.org/download/cdxgen/latest/linux -o cdxgen
+          npm install -g @cyclonedx/cdxgen
           chmod +x cdxgen
-          ./cdxgen -t maven -o ${{ env.artifact_path }}/maven/sbom.json
+          cdxgen -t maven -o ${{ env.artifact_path }}/maven/sbom.json
 
           # Generate SBOM for JavaScript/TypeScript (npm)
-          ./cdxgen -t npm -o ${{ env.artifact_path }}/javascript/sbom.json
+          cdxgen -t npm -o ${{ env.artifact_path }}/javascript/sbom.json
       # Step 3: Set up the Java environment
       - name: Set up Java environment
         uses: actions/setup-java@v4
