@@ -29,23 +29,6 @@ jobs:
       # Step 1: Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # Step 2: Set default artifact path if input is null
-      - name: Set artifact path
-        id: set-artifact-path
-        run: |
-          DEFAULT_PATH="./default-artifacts"
-          if [ -z "${{ inputs.artifact_path }}" ]; then
-            echo "Using default artifact path."
-            echo "artifact_path=$DEFAULT_PATH" >> $GITHUB_ENV
-            mkdir -p $DEFAULT_PATH
-          else
-            echo "artifact_path=${{ inputs.artifact_path }}" >> $GITHUB_ENV
-            mkdir -p "${{ inputs.artifact_path }}"
-          fi
-          mkdir -p "${{ inputs.artifact_path }}/maven"
-          mkdir -p "${{ inputs.artifact_path }}/javascript"
-      # Step 3: Set up the Java environment
       - name: Setup Maven Action
         uses: s4u/setup-maven-action@v1.14.0
         with:
@@ -69,7 +52,20 @@ jobs:
           mvn -version
           npm --version
           node --version
-         
+      - name: Set artifact path
+        id: set-artifact-path
+        run: |
+          DEFAULT_PATH="./default-artifacts"
+          if [ -z "${{ inputs.artifact_path }}" ]; then
+            echo "Using default artifact path."
+            echo "artifact_path=$DEFAULT_PATH" >> $GITHUB_ENV
+            mkdir -p $DEFAULT_PATH
+          else
+            echo "artifact_path=${{ inputs.artifact_path }}" >> $GITHUB_ENV
+            mkdir -p "${{ inputs.artifact_path }}"
+          fi
+          mkdir -p "${{ inputs.artifact_path }}/maven"
+          mkdir -p "${{ inputs.artifact_path }}/javascript"
       - name: Generate SBOM for Java and JavaScript/TypeScript
         run: |
           # Generate SBOM for Java (Maven)
