@@ -35,7 +35,7 @@ jobs:
             echo "artifact_path=${{ inputs.artifact_path }}" >> $GITHUB_ENV
             mkdir -p "${{ inputs.artifact_path }}"
           fi
-            - name: Setup Node.js
+    
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
