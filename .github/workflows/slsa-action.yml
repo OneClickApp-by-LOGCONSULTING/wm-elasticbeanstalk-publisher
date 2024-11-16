@@ -54,9 +54,6 @@ jobs:
       - name: Commit and push SBOM to repository
         run: |
           # Set up git configuration
-          git config --global OneClickApp "info@oneclickapp.com"
-          git config --global OneClickApp "Your GitHub Actions Bot"
-          
           # Add SBOM to repository
           git add ${{ env.artifact_path }}/maven/sbom.json
           git add ${{ env.artifact_path }}/javascript/sbom.json
