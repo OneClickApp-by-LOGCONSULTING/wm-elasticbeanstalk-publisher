@@ -7,6 +7,7 @@ on:
         description: "The path to the generated artifacts."
         required: false
         type: string
+        default: "./slsa-artifacts"
 
 jobs:
   generate-and-verify-slsa:
@@ -20,7 +21,7 @@ jobs:
       - name: Set artifact path
         id: set-artifact-path
         run: |
-          DEFAULT_PATH="./default-artifacts"
+          DEFAULT_PATH="${{ inputs.artifact_path }}"
           if [ -z "${{ inputs.artifact_path }}" ]; then
             echo "artifact_path=$DEFAULT_PATH" >> $GITHUB_ENV
           else
