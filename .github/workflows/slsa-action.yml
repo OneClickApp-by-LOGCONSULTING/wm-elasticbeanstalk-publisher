@@ -41,11 +41,11 @@ jobs:
       - name: Build Maven project
         run: mvn clean package -DskipTests
 
-      # - name: Generate SLSA Provenance for Maven
-      #   uses: slsa-framework/slsa-github-generator/.github/workflows/builder_maven_slsa3.yml@v2.0.0
-      #   with:
-      #     artifact_path: ${{ env.artifact_path }}/maven
-      #     version: ${{ github.ref_name }}
+      - name: Generate SLSA Provenance for Maven
+        uses: slsa-framework/slsa-github-generator/.github/workflows/builder_maven_slsa3.yml@v2.0.0
+        with:
+          artifact_path: ${{ env.artifact_path }}/maven
+          version: ${{ github.ref_name }}
 
       # - name: Verify SLSA Provenance for Maven
       #   run: |
