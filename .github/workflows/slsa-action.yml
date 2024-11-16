@@ -21,13 +21,15 @@ jobs:
       - name: Set artifact path
         id: set-artifact-path
         run: |
-          DEFAULT_PATH="${{ inputs.artifact_path }}"
+          DEFAULT_PATH="./default-artifacts"
           if [ -z "${{ inputs.artifact_path }}" ]; then
+            echo "Using default artifact path."
             echo "artifact_path=$DEFAULT_PATH" >> $GITHUB_ENV
+            mkdir -p $DEFAULT_PATH
           else
             echo "artifact_path=${{ inputs.artifact_path }}" >> $GITHUB_ENV
+            mkdir -p "${{ inputs.artifact_path }}"
           fi
-          mkdir -p ${{ env.artifact_path }}
 
       # Step 2: Build and Generate Provenance for Maven
       - name: Set up Java environment
