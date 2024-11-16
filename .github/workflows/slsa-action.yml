@@ -43,12 +43,12 @@ jobs:
       - name: Generate SBOM for Java and JavaScript/TypeScript
         run: |
           # Generate SBOM for Java (Maven)
-          npm install -g @cyclonedx/cdxgen
-          chmod +x cdxgen
-          cdxgen -t maven -o ${{ env.artifact_path }}/maven/sbom.json
+          sudo npm install -g @cyclonedx/cdxgen
+          sudo chmod +x cdxgen
+          sudo cdxgen -t maven -o ${{ env.artifact_path }}/maven/sbom.json
 
           # Generate SBOM for JavaScript/TypeScript (npm)
-          cdxgen -t npm -o ${{ env.artifact_path }}/javascript/sbom.json
+          sudo cdxgen -t npm -o ${{ env.artifact_path }}/javascript/sbom.json
       # Step 3: Set up the Java environment
       - name: Set up Java environment
         uses: actions/setup-java@v4
