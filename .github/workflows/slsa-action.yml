@@ -11,7 +11,15 @@ on:
       node-version:
         required: false
         type: string
-        default: '18.16.1'  # Default Node.js version
+        default: '18.16.1'
+      maven-version:
+        required: false
+        type: string
+        default: '3.9.9'  # Default Maven Version
+      java-version:
+        required: false
+        type: string
+        default: '21'  # Default JAVA version for Build WM application refer to  release notes
 
 jobs:
   generate-and-verify-slsa:
@@ -38,11 +46,19 @@ jobs:
           mkdir -p "${{ inputs.artifact_path }}/maven"
           mkdir -p "${{ inputs.artifact_path }}/javascript"
       # Step 3: Set up the Java environment
-      - name: Set up Java environment
-        uses: actions/setup-java@v4
+      - name: Setup Maven Action
+        uses: s4u/setup-maven-action@v1.14.0
         with:
-          distribution: 'corretto'
-          java-version: '21'
+          java-version: ${{ inputs.java-version }}
+          maven-version: ${{ inputs.maven-version }}
+          java-distribution: 'corretto'
+      - name: Enable Maven caching
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
