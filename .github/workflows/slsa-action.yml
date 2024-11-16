@@ -3,17 +3,10 @@ name: SLSA Provenance Generation and Verification
 on:
   workflow_call:
     inputs:
-      language:
-        description: "The project language (maven, javascript, typescript)."
-        required: true
-        type: string
       artifact_path:
         description: "The path to the generated artifacts."
         required: true
         type: string
-    secrets:
-      github_token:
-        required: true
 
 jobs:
   generate-and-verify-slsa:
@@ -23,61 +16,78 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # Step 1: Maven
       - name: Set up Java environment
-        if: ${{ inputs.language == 'maven' }}
         uses: actions/setup-java@v3
         with:
           distribution: 'corretto'
           java-version: '21'
 
-      - name: Set up Node.js environment
-        if: ${{ inputs.language == 'javascript' || inputs.language == 'typescript' }}
-        uses: actions/setup-node@v3
-        with:
-          node-version: '16'
-
       - name: Install dependencies and build (Maven)
-        if: ${{ inputs.language == 'maven' }}
-        run: |
-          mvn clean package -DskipTests
+        run: mvn clean package -DskipTests
 
-      - name: Install dependencies (JavaScript/TypeScript)
-        if: ${{ inputs.language == 'javascript' || inputs.language == 'typescript' }}
-        run: npm install
-
-      - name: Build project (JavaScript/TypeScript)
-        if: ${{ inputs.language == 'javascript' || inputs.language == 'typescript' }}
-        run: npm run build
-
-      - name: Generate SLSA Provenance
+      - name: Generate SLSA Provenance for Maven
         uses: slsa-framework/slsa-github-generator@v1
         with:
-          artifact_path: ${{ inputs.artifact_path }}
+          artifact_path: ${{ inputs.artifact_path }}/maven
           version: ${{ github.ref_name }}
 
-      - name: Verify SLSA Provenance and Generate Report
+      - name: Verify SLSA Provenance for Maven
         run: |
           curl -Lo slsa-verifier https://github.com/slsa-framework/slsa-verifier/releases/latest/download/slsa-verifier-linux-amd64
           chmod +x slsa-verifier
           ./slsa-verifier verify-artifact \
-            --provenance ${{ inputs.artifact_path }}/target/*.slsa.json \
+            --provenance ${{ inputs.artifact_path }}/maven/target/*.slsa.json \
             --source github.com/${{ github.repository }} \
             --builder-id https://github.com/slsa-framework/slsa-github-generator \
-            ${{ inputs.artifact_path }}/target/*.jar > verification_output.txt 2>&1
-          echo "<html><body><h2>Report di Verifica SLSA</h2><pre>" > slsa_verification_report.html
-          cat verification_output.txt >> slsa_verification_report.html
-          echo "</pre></body></html>" >> slsa_verification_report.html
+            ${{ inputs.artifact_path }}/maven/target/*.jar > maven_verification_output.txt 2>&1
+          echo "<html><body><h2>Maven SLSA Verification Report</h2><pre>" > maven_verification_report.html
+          cat maven_verification_output.txt >> maven_verification_report.html
+          echo "</pre></body></html>" >> maven_verification_report.html
 
-      - name: Upload HTML Report
+      # Step 2: JavaScript/TypeScript
+      - name: Set up Node.js environment
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Install dependencies (JavaScript/TypeScript)
+        run: npm install
+
+      - name: Build project (JavaScript/TypeScript)
+        run: npm run build
+
+      - name: Generate SLSA Provenance for JavaScript/TypeScript
+        uses: slsa-framework/slsa-github-generator@v1
+        with:
+          artifact_path: ${{ inputs.artifact_path }}/javascript
+          version: ${{ github.ref_name }}
+
+      - name: Verify SLSA Provenance for JavaScript/TypeScript
+        run: |
+          curl -Lo slsa-verifier https://github.com/slsa-framework/slsa-verifier/releases/latest/download/slsa-verifier-linux-amd64
+          chmod +x slsa-verifier
+          ./slsa-verifier verify-artifact \
+            --provenance ${{ inputs.artifact_path }}/javascript/dist/*.slsa.json \
+            --source github.com/${{ github.repository }} \
+            --builder-id https://github.com/slsa-framework/slsa-github-generator \
+            ${{ inputs.artifact_path }}/javascript/dist/*.js > javascript_verification_output.txt 2>&1
+          echo "<html><body><h2>JavaScript/TypeScript SLSA Verification Report</h2><pre>" > javascript_verification_report.html
+          cat javascript_verification_output.txt >> javascript_verification_report.html
+          echo "</pre></body></html>" >> javascript_verification_report.html
+
+      # Step 3: Organize all artifacts in a single directory
+      - name: Prepare directory for all artifacts
+        run: |
+          mkdir -p ./artifact-storage
+          cp -r ${{ inputs.artifact_path }}/maven/target/* ./artifact-storage/
+          cp -r ${{ inputs.artifact_path }}/javascript/dist/* ./artifact-storage/
+          mv maven_verification_report.html ./artifact-storage/
+          mv javascript_verification_report.html ./artifact-storage/
+
+      # Step 4: Upload all artifacts
+      - name: Upload all artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: slsa-verification-report
-          path: slsa_verification_report.html
-
-      - name: Upload Provenance
-        uses: actions/upload-artifact@v3
-        with:
-          name: slsa-provenance
-          path: |
-            ${{ inputs.artifact_path }}/target/*.slsa.json
-            ${{ inputs.artifact_path }}/dist/*.slsa.json
+          name: all-slsa-artifacts
+          path: ./artifact-storage/
