@@ -37,11 +37,23 @@ jobs:
           fi
           mkdir -p "${{ inputs.artifact_path }}/maven"
           mkdir -p "${{ inputs.artifact_path }}/javascript"
-    
+      # Step 3: Set up the Java environment
+      - name: Set up Java environment
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'corretto'
+          java-version: '21'
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.node-version }}
+      - name: Check build environment versions (GIT, MAVEN, NPM, NODE, ANT)
+        run: |
+          git --version
+          mvn -version
+          npm --version
+          node --version
+         
       - name: Generate SBOM for Java and JavaScript/TypeScript
         run: |
           # Generate SBOM for Java (Maven)
@@ -64,13 +76,7 @@ jobs:
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # Step 3: Set up the Java environment
-      - name: Set up Java environment
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'corretto'
-          java-version: '21'
-
+  
       # Step 4: Build Maven project
       - name: Build Maven project
         run: mvn clean package -DskipTests
