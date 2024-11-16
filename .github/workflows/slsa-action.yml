@@ -59,10 +59,8 @@ jobs:
           
           # Add SBOM to repository
           git add ${{ env.artifact_path }}/maven/sbom.json
-          git commit -m "Add generated SBOM for Maven project"
-          git push
           git add ${{ env.artifact_path }}/javascript/sbom.json
-          git commit -m "Add generated SBOM for Maven project"
+          git commit -m "Add generated SBOM for project"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
