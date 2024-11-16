@@ -39,7 +39,7 @@ jobs:
         run: mvn clean package -DskipTests
 
       - name: Generate SLSA Provenance for Maven
-        uses: slsa-framework/slsa-github-generator@v1
+        uses: slsa-framework/slsa-github-generator@v2.0.0
         with:
           artifact_path: ${{ env.artifact_path }}/maven
           version: ${{ github.ref_name }}
