@@ -31,7 +31,7 @@ on:
         required: false
         type: boolean
         default: false
-      force-root-wm-app-name: # Wavemaker application version
+      force-root-wm-app-name: # force Wavemaker application name as ROOT.war, it place Tomcat to have WM-APP in root context.
         required: false
         type: boolean
         default: false  
