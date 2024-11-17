@@ -153,9 +153,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
           aws-region: ${{ inputs.aws-region }}
       - name: Set default for use-lowercase if empty
-        run: |
-          if [ -z "${{ inputs.force-lowercase-wm-app-name }}" ]; then
-            echo " force-lowercase-wm-app-name is empty, defaulting to false."
+        run: | 
+          if [ -z "${{ inputs.force-lowercase-wm-app-name }}" ] || [[ "${{ inputs.force-lowercase-wm-app-name }}" =~ ^[fF](alse)?$ ]]; then
+            echo "force-lowercase-wm-app-name is empty or false, defaulting to false."
             echo "USE_LOWERCASE=false" >> $GITHUB_ENV
           else
             echo "USE_LOWERCASE=true" >> $GITHUB_ENV
