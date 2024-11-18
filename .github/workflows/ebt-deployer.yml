@@ -23,11 +23,11 @@ on:
       environment-name:
         required: true
         type: string
-      wm-app-name: # Wavemaker application version
+      wm-app-name: # Wavemaker application name. This is the WM app name you can find in pom.xml file.
         required: false
         type: string
         default: 'OneClickApp'  
-      force-lowercase-wm-app-name: # Wavemaker application version
+      force-lowercase-wm-app-name: # Force pipeline to change the WAR file name to deploy to lowercase letter only.
         required: false
         type: boolean
         default: false
@@ -39,15 +39,15 @@ on:
         required: false
         type: string
         default: 'OneClickApp'
-      wm-profile:
+      wm-profile: #Wavemaker profile to use. check the profiles folder with .propeties files.
         required: true
         type: string
         default: 'prod'
-      aws-s3-bucket-name:
+      aws-s3-bucket-name: #AWS S3 bucket name where to store the WAR artifact file built by maven
         required: true
         type: string
         default: ''
-      aws-s3-bucket-region:
+      aws-s3-bucket-region: #
         required: true
         type: string
         default: 'eu-south-1'
@@ -180,10 +180,7 @@ jobs:
             echo "Keeping original wm-app-name case"
             cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war $WM_APP_NAME.war
           fi
-          mkdir .ebextensions 
-          cd .ebextensions
-          ls
-          cd ..
+         
           if [ -z "${{ inputs.force-root-wm-app-name }}" ] || [[ "${{ inputs.force-lowercase-wm-app-name }}" =~ ^[fF](alse)?$ ]]; then
             echo "force-root-wm-app-name is empty or false, defaulting to false."          
             echo "USE_ROOT=true" >> $GITHUB_ENV
@@ -191,10 +188,14 @@ jobs:
           else
             echo "force-root-wm-app-name is true"
             echo "USE_ROOT=false" >> $GITHUB_ENV
-            sudo rm ROOT.war
+            rm ROOT.war
             cp $WM_APP_NAME.war ROOT.war
             zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war
-          fi            
+          fi       
+          mkdir .ebextensions 
+          cd .ebextensions
+          ls
+          cd ..     
           unzip -l ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip
           aws s3 cp ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip s3://${{ inputs.aws-s3-bucket-name }}/ --region ${{ inputs.aws-s3-bucket-region }}
           aws elasticbeanstalk create-application-version --application-name ${{ inputs.beanstalk-application-name }} --version-label ${{ inputs.wm-app-name }}-$TIME --source-bundle S3Bucket="${{ inputs.aws-s3-bucket-name }}",S3Key="${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip" --no-auto-create-application --region ${{ inputs.aws-region }}
