@@ -181,13 +181,11 @@ jobs:
             cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war $WM_APP_NAME.war
           fi
          
-          if [ -z "${{ inputs.force-root-wm-app-name }}" ] || [[ "${{ inputs.force-lowercase-wm-app-name }}" =~ ^[fF](alse)?$ ]]; then
-            echo "force-root-wm-app-name is empty or false, defaulting to false."          
-            echo "USE_ROOT=true" >> $GITHUB_ENV
+          if [ -z "${{ inputs.force-root-wm-app-name }}" ] || [[ "${{ inputs.force-root-wm-app-name }}" =~ ^[fF](alse)?$ ]]; then
+            echo "force-root-wm-app-name is empty or false, defaulting to false."
             zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war $WM_APP_NAME.war
           else
             echo "force-root-wm-app-name is true"
-            echo "USE_ROOT=false" >> $GITHUB_ENV
             rm ROOT.war
             cp $WM_APP_NAME.war ROOT.war
             zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war
