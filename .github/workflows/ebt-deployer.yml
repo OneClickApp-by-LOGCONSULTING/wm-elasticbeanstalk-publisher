@@ -181,7 +181,7 @@ jobs:
           fi
 
       # Fetch the log-streaming.config file from the GitHub repository
-      - name: Fetch log-streaming.config using GitHub API
+      - name: Fetch log-streaming.config. Check if EBT enviroment support Cloudwat log streaming.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
