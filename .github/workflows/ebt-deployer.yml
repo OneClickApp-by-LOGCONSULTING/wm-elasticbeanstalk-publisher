@@ -15,7 +15,7 @@ on:
       java-version:
         required: false
         type: string
-        default: '21'  # Default JAVA version for Build WM application refer to  release notes
+        default: '21'  # Default JAVA version for Build WM application refer to release notes
       aws-region:
         required: false
         type: string
@@ -31,7 +31,7 @@ on:
         required: false
         type: boolean
         default: false
-      force-root-wm-app-name: # force Wavemaker application name as ROOT.war, it place Tomcat to have WM-APP in root context.
+      force-root-wm-app-name: # force Wavemaker application name as ROOT.war, it places Tomcat to have WM-APP in root context.
         required: false
         type: boolean
         default: false  
@@ -39,7 +39,7 @@ on:
         required: false
         type: string
         default: 'OneClickApp'
-      wm-profile: #Wavemaker profile to use. check the profiles folder with .propeties files.
+      wm-profile: #Wavemaker profile to use. Check the profiles folder with .properties files.
         required: true
         type: string
         default: 'prod'
@@ -61,15 +61,14 @@ on:
        aws-secret-access-key: # AWS SecretKey
         required: true
         
-      
-
 jobs:
   build:
     name: Build and Deploy WM to AWS Elastic Beanstalk
-    timeout-minutes: 20
-    runs-on: ubuntu-latest
+    timeout-minutes: 20  # Timeout for the build job
+    runs-on: ubuntu-latest  # Use the latest Ubuntu runner provided by GitHub
 
     steps:
+      # Output GitHub event info
       - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
       - run: echo "🐧 This job is now running on a ${{ runner.os }} server hosted by GitHub!"
       - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."    
@@ -77,21 +76,24 @@ jobs:
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
 
+      # Check out the repository code
       - name: Check out repository code
         uses: actions/checkout@v3
 
+      # List the contents of the profiles directory
       - run: |
           REPO_NAME=${{ github.event.repository.name }}
           echo "💡 The $REPO_NAME repository has been cloned to the runner."          
-          echo "========== Wavemaker App profiles propeties files ========"
+          echo "========== Wavemaker App profiles properties files ========"
           cd profiles 
           ls
           echo "=========================================================="
 
+      # Check if specific string exists in the wm-profile properties file
       - name: Check if a wavemakeronline.com string exists in the wm-profile properties file
         id: check_string_in_properties
         run: |
-          echo "💡 Cheche the ${{ inputs.wm-profile }}.properties file in propeties folder. Looking for string 'wavemakeronline.com' becaude pipeline presume to deploy in production, without the need of wavemakeronline staging enviroments."          
+          echo "💡 Check the ${{ inputs.wm-profile }}.properties file in the properties folder. Looking for string 'wavemakeronline.com' because pipeline assumes to deploy in production."
           PROPERTIES_FILE="${{ inputs.wm-profile }}.properties"
           SEARCH_STRING="wavemakeronline.com"
           cd profiles
@@ -110,13 +112,14 @@ jobs:
           else 
              echo "✅ String '$SEARCH_STRING' is NOT present in $PROPERTIES_FILE."     
           fi
-        
 
+      # Set up Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.node-version }}
 
+      # Set up Maven
       - name: Setup Maven Action
         uses: s4u/setup-maven-action@v1.14.0
         with:
@@ -124,6 +127,7 @@ jobs:
           maven-version: ${{ inputs.maven-version }}
           java-distribution: 'corretto'
 
+      # Enable Maven caching for dependency management
       - name: Enable Maven caching
         uses: actions/cache@v3
         with:
@@ -132,22 +136,25 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-m2
 
+      # Check the versions of various tools (GIT, MAVEN, NPM, NODE, ANT)
       - name: Check build environment versions (GIT, MAVEN, NPM, NODE, ANT)
         run: |
           git --version
           mvn -version
           npm --version
           node --version
-         
 
+      # Build the WAR file after running the tests
       - name: Create the WAR after running the tests
         run: mvn clean install -P${{ inputs.wm-profile }} -X -e
 
+      # Download a sample WAR file (for testing purposes)
       - name: wget a sample WAR file
         uses: wei/wget@v1
         with:
           args: -O ROOT.war https://tomcat.apache.org/tomcat-10.0-doc/appdev/sample/sample.war
 
+      # Get current time for naming and versioning purposes
       - name: Get the current time
         id: time
         uses: nanzm/get-time-action@v1.1
@@ -155,12 +162,15 @@ jobs:
           timeZone: 0
           format: 'YYYY-MM-DD-HH-mm-ss'
 
+      # Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.aws-access-key-id }}
           aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
           aws-region: ${{ inputs.aws-region }}
+
+      # Set default for use-lowercase if the parameter is empty
       - name: Set default for use-lowercase if empty
         run: | 
           if [ -z "${{ inputs.force-lowercase-wm-app-name }}" ] || [[ "${{ inputs.force-lowercase-wm-app-name }}" =~ ^[fF](alse)?$ ]]; then
@@ -168,8 +178,9 @@ jobs:
             echo "USE_LOWERCASE=false" >> $GITHUB_ENV
           else
             echo "USE_LOWERCASE=true" >> $GITHUB_ENV
-          fi     
- 
+          fi
+
+      # Fetch the log-streaming.config file from the GitHub repository
       - name: Fetch log-streaming.config using GitHub API
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -181,7 +192,9 @@ jobs:
           sed -i "s/log_group_prefix/$TARGET_STRING/g" log-streaming.config
           echo "Replaced 'log_group_prefix' with '${{ inputs.log_group_prefix }}'."
           echo "Updated log-streaming.config file:"
-          cat log-streaming.config    
+          cat log-streaming.config
+
+      # Upload the WAR file to AWS S3 and update Elastic Beanstalk environment
       - name: Upload the WAR file to AWS
         env:
           TIME: "${{ steps.time.outputs.time }}"
@@ -202,7 +215,7 @@ jobs:
           cd .ebextensions
           ls
           cd ..     
-         
+
           if [ -z "${{ inputs.force-root-wm-app-name }}" ] || [[ "${{ inputs.force-root-wm-app-name }}" =~ ^[fF](alse)?$ ]]; then
             echo "force-root-wm-app-name is empty or false, defaulting to false."
             zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war $WM_APP_NAME.war .ebextensions/log-streaming.config
