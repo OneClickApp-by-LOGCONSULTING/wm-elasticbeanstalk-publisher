@@ -51,11 +51,16 @@ on:
         required: true
         type: string
         default: 'eu-south-1'
+      log_group_prefix:
+         required: false
+         type: string
+         default: beanstalk-application-name
     secrets:
        aws-access-key-id: # AWS AccessKey
         required: true      
        aws-secret-access-key: # AWS SecretKey
         required: true
+        
       
 
 jobs:
@@ -164,14 +169,29 @@ jobs:
           else
             echo "USE_LOWERCASE=true" >> $GITHUB_ENV
           fi     
-
-      - name: Fetch log streaming file using
+###################################################################################
+      - name: Fetch log-streaming.config using GitHub API
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           FILE_URL="https://api.github.com/repos/OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher/contents/log-streaming.config"
           curl -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3.raw" -o log-streaming.config "$FILE_URL"
+          echo "Fetched log-streaming.config file."
+
+      - name: Replace 'acy_admin' with action parameter
+        run: |
+          TARGET_STRING="${{ inputs.log_group_prefix }}"  # This parameter should be provided in the calling workflow
+          sed -i "s/acy_admin/$TARGET_STRING/g" log-streaming.config
+          echo "Replaced 'acy_admin' with '${{ inputs.log_group_prefix }}'."
+          echo "Updated log-streaming.config file:"
           cat log-streaming.config
+
+      - name: Save updated file
+        run: |
+          mv log-streaming.config updated-log-streaming.config
+          echo "Updated file saved as updated-log-streaming.config."
+
+    
       - name: Upload the WAR file to AWS
         env:
           TIME: "${{ steps.time.outputs.time }}"
