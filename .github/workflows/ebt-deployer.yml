@@ -176,23 +176,12 @@ jobs:
         run: |
           FILE_URL="https://api.github.com/repos/OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher/contents/log-streaming.config"
           curl -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3.raw" -o log-streaming.config "$FILE_URL"
-          echo "Fetched log-streaming.config file."
-
-      - name: Replace 'acy_admin' with action parameter
-        run: |
+          echo "Fetched log-streaming.config file."      
           TARGET_STRING="${{ inputs.log_group_prefix }}"  # This parameter should be provided in the calling workflow
           sed -i "s/acy_admin/$TARGET_STRING/g" log-streaming.config
           echo "Replaced 'acy_admin' with '${{ inputs.log_group_prefix }}'."
           echo "Updated log-streaming.config file:"
-          cat log-streaming.config
-
-      - name: Save updated file
-        run: |
-          mv log-streaming.config updated-log-streaming.config
-          echo "Updated file saved as updated-log-streaming.config."
-          cat updated-log-streaming.config
-
-    
+          cat log-streaming.config    
       - name: Upload the WAR file to AWS
         env:
           TIME: "${{ steps.time.outputs.time }}"
@@ -208,20 +197,22 @@ jobs:
             echo "Keeping original wm-app-name case"
             cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war $WM_APP_NAME.war
           fi
+          mkdir .ebextensions 
+          cp  updated-log-streaming.config .ebextensions 
+          cd .ebextensions
+          ls
+          cd ..     
          
           if [ -z "${{ inputs.force-root-wm-app-name }}" ] || [[ "${{ inputs.force-root-wm-app-name }}" =~ ^[fF](alse)?$ ]]; then
             echo "force-root-wm-app-name is empty or false, defaulting to false."
-            zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war $WM_APP_NAME.war
+            zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war $WM_APP_NAME.war .ebextensions/log-streaming.config
           else
             echo "force-root-wm-app-name is true"
             rm ROOT.war
             cp $WM_APP_NAME.war ROOT.war
-            zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war
+            zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war .ebextensions/log-streaming.config
           fi       
-          mkdir .ebextensions 
-          cd .ebextensions
-          ls
-          cd ..     
+         
           unzip -l ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip
           aws s3 cp ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip s3://${{ inputs.aws-s3-bucket-name }}/ --region ${{ inputs.aws-s3-bucket-region }}
           aws elasticbeanstalk create-application-version --application-name ${{ inputs.beanstalk-application-name }} --version-label ${{ inputs.wm-app-name }}-$TIME --source-bundle S3Bucket="${{ inputs.aws-s3-bucket-name }}",S3Key="${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip" --no-auto-create-application --region ${{ inputs.aws-region }}
