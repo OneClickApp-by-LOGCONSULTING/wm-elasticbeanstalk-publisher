@@ -51,10 +51,9 @@ on:
         required: true
         type: string
         default: 'eu-south-1'
-      log_group_prefix:
+      log-group-prefix:
          required: false
-         type: string
-         default: wm-app-name
+         type: string         
     secrets:
        aws-access-key-id: # AWS AccessKey
         required: true      
@@ -185,13 +184,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Check if log-group-prefix is empty or not set
+          if [ -z "${{ inputs.log-group-prefix }}" ]; then
+            LOG_GROUP_PREFIX=${{ inputs.wm-app-name }}
+            echo "log-group-prefix is empty. Using wm-app-name (${LOG_GROUP_PREFIX}) as the default value for log group."
+          else
+            LOG_GROUP_PREFIX=${{ inputs.log-group-prefix }}
+            echo "log-group-prefix is set to: ${LOG_GROUP_PREFIX}"
+          fi
+
+          # Fetch the log-streaming.config file
           FILE_URL="https://api.github.com/repos/OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher/contents/log-streaming.config"
           curl -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3.raw" -o log-streaming.config "$FILE_URL"
-          echo "Fetched log-streaming.config file."      
-          TARGET_STRING="${{ inputs.log_group_prefix }}"  # This parameter should be provided in the calling workflow
-          sed -i "s/log_group_prefix/$TARGET_STRING/g" log-streaming.config
-          echo "Replaced 'log_group_prefix' with '${{ inputs.log_group_prefix }}'."
-          echo "Updated log-streaming.config file:"
+          echo "Fetched log-streaming.config file."
+
+          # Replace placeholder in log-streaming.config
+          sed -i "s/log_group_prefix/$LOG_GROUP_PREFIX/g" log-streaming.config
+          echo "Updated log-streaming.config file with log-group-prefix: ${LOG_GROUP_PREFIX}"
           cat log-streaming.config
 
       # Upload the WAR file to AWS S3 and update Elastic Beanstalk environment
