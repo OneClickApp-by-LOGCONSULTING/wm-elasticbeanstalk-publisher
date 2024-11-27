@@ -169,7 +169,7 @@ jobs:
           else
             echo "USE_LOWERCASE=true" >> $GITHUB_ENV
           fi     
-###################################################################################
+ 
       - name: Fetch log-streaming.config using GitHub API
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -178,8 +178,8 @@ jobs:
           curl -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3.raw" -o log-streaming.config "$FILE_URL"
           echo "Fetched log-streaming.config file."      
           TARGET_STRING="${{ inputs.log_group_prefix }}"  # This parameter should be provided in the calling workflow
-          sed -i "s/acy_admin/$TARGET_STRING/g" log-streaming.config
-          echo "Replaced 'acy_admin' with '${{ inputs.log_group_prefix }}'."
+          sed -i "s/log_group_prefix/$TARGET_STRING/g" log-streaming.config
+          echo "Replaced 'log_group_prefix' with '${{ inputs.log_group_prefix }}'."
           echo "Updated log-streaming.config file:"
           cat log-streaming.config    
       - name: Upload the WAR file to AWS
