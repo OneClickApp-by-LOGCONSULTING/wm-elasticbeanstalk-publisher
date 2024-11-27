@@ -54,7 +54,7 @@ on:
       log_group_prefix:
          required: false
          type: string
-         default: beanstalk-application-name
+         default: wm-app-name
     secrets:
        aws-access-key-id: # AWS AccessKey
         required: true      
@@ -190,6 +190,7 @@ jobs:
         run: |
           mv log-streaming.config updated-log-streaming.config
           echo "Updated file saved as updated-log-streaming.config."
+          cat updated-log-streaming.config
 
     
       - name: Upload the WAR file to AWS
