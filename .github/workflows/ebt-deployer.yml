@@ -198,7 +198,7 @@ jobs:
             cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war $WM_APP_NAME.war
           fi
           mkdir .ebextensions 
-          cp  updated-log-streaming.config .ebextensions 
+          cp  log-streaming.config .ebextensions 
           cd .ebextensions
           ls
           cd ..     
