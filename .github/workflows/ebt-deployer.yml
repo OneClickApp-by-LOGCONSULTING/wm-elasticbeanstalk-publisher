@@ -165,6 +165,13 @@ jobs:
             echo "USE_LOWERCASE=true" >> $GITHUB_ENV
           fi     
 
+      - name: Fetch log streaming file using
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FILE_URL="https://api.github.com/repos/OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher/contents/log-streaming.config"
+          curl -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3.raw" -o log-streaming.config "$FILE_URL"
+          cat log-streaming.config
       - name: Upload the WAR file to AWS
         env:
           TIME: "${{ steps.time.outputs.time }}"
