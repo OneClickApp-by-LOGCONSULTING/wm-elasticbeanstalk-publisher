@@ -7,7 +7,7 @@ on:
       node-version:
         required: false
         type: string
-        default: '18.16.1'  # Default Node.js version
+        default: '22.11.0'  # Default Node.js version
       maven-version:
         required: false
         type: string
