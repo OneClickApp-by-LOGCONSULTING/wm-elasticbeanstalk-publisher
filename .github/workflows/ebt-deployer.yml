@@ -114,13 +114,13 @@ jobs:
 
       # Set up Node.js
       - name: Setup Node.js
-        uses: actions/setup-node@v4.1.0
+        uses: actions/setup-node@v4.2.0
         with:
           node-version: ${{ inputs.node-version }}
 
       # Set up Maven
       - name: Setup Maven Action
-        uses: s4u/setup-maven-action@v1.14.0
+        uses: s4u/setup-maven-action@v1.18.0
         with:
           java-version: ${{ inputs.java-version }}
           maven-version: ${{ inputs.maven-version }}
@@ -139,9 +139,10 @@ jobs:
       - name: Check build environment versions (GIT, MAVEN, NPM, NODE, ANT)
         run: |
           git --version
-          mvn -version
-          npm --version
-          node --version
+          mvn -version        
+          echo "NPM version: $(npm --version)"
+          echo "Node version: $(node --version)"
+          echo "Ant version: $(ant -version)"
 
       # Build the WAR file after running the tests
       - name: Create the WAR after running the tests
