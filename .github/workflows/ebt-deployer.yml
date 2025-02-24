@@ -8,6 +8,10 @@ on:
         required: false
         type: string
         default: '22.11.0'  # Default Node.js version
+      npm-version:
+        required: false
+        type: string
+        default: '10.9.0'
       maven-version:
         required: false
         type: string
@@ -117,7 +121,8 @@ jobs:
         uses: actions/setup-node@v4.2.0
         with:
           node-version: ${{ inputs.node-version }}
-
+      - name: Upgrade npm to ${{ inputs.npm-version }}
+        run: npm install -g npm@${{ inputs.npm-version }}
       # Set up Maven
       - name: Setup Maven Action
         uses: s4u/setup-maven-action@v1.18.0
