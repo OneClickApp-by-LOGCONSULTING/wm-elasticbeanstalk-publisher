@@ -209,6 +209,41 @@ jobs:
           echo "Updated log-streaming.config file with log-group-prefix: ${LOG_GROUP_PREFIX}"
           cat log-streaming.config
 
+      # Create a GitHub release programmatically via GitHub REST API
+      - name: Create GitHub Release if it does not exist
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TIME: "${{ steps.time.outputs.time }}"
+        run: |
+          TAG_NAME="${{ inputs.wm-app-name }}-${TIME}"
+          RELEASE_NAME="Release $TAG_NAME"
+          REPO="${{ github.repository }}"
+          API_URL="https://api.github.com/repos/${REPO}/releases"
+
+          # Check if the release already exists
+          response=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "$API_URL/tags/$TAG_NAME")
+          if echo "$response" | grep -q "Not Found"; then
+            echo "Release not found. Creating new release..."
+            data=$(jq -n --arg tag "$TAG_NAME" --arg name "$RELEASE_NAME" --arg body "Auto-created release for deployment at $TIME" \
+              '{ tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false }')
+            curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/json" -d "$data" "$API_URL"
+          else
+            echo "✅ Release $TAG_NAME already exists. Skipping creation."
+          fi
+          echo "release_tag=$TAG_NAME" >> $GITHUB_OUTPUT
+
+      # Upload the ZIP file to the GitHub release as asset
+      - name: Upload WAR ZIP as release asset
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.create_release.outputs.release_tag }}
+          files: ${{ inputs.wm-app-name }}-ebt_deployer-${{ steps.time.outputs.time }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+
       # Upload the WAR file to AWS S3 and update Elastic Beanstalk environment
       - name: Upload the WAR file to AWS
         env:
