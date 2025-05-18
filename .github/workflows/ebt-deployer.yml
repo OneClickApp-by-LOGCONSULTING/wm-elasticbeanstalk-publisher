@@ -57,7 +57,11 @@ on:
         default: 'eu-south-1'
       log-group-prefix:
          required: false
-         type: string         
+         type: string  
+      root-war-url:
+         required: false
+         type: string  
+         default: ''
     secrets:
        aws-access-key-id: # AWS AccessKey
         required: true      
@@ -157,7 +161,7 @@ jobs:
       - name: wget a sample WAR file
         uses: wei/wget@v1
         with:
-          args: -O ROOT.war https://tomcat.apache.org/tomcat-10.0-doc/appdev/sample/sample.war
+          args: -O ROOT.war ${{ inputs.root-war-url != '' && inputs.root-war-url || 'https://tomcat.apache.org/tomcat-10.0-doc/appdev/sample/sample.war' }}
 
       # Get current time for naming and versioning purposes
       - name: Get the current time
