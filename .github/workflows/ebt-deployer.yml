@@ -213,6 +213,11 @@ jobs:
           echo "Updated log-streaming.config file with log-group-prefix: ${LOG_GROUP_PREFIX}"
           cat log-streaming.config
 
+          # Fetch the log-streaming.config file
+          FILE_URL="https://api.github.com/repos/OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher/contents/apache-logs.config"
+          curl -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3.raw" -o log-streaming.config "$FILE_URL"
+          echo "Fetched log-streaming.config file."
+
       # Upload the WAR file to AWS S3 and update Elastic Beanstalk environment
       - name: Upload the WAR file to AWS
         env:
@@ -231,6 +236,7 @@ jobs:
           fi
           mkdir .ebextensions 
           cp  log-streaming.config .ebextensions 
+          cp  apache-logs.config .ebextensions 
           cd .ebextensions
           ls
           cd ..     
