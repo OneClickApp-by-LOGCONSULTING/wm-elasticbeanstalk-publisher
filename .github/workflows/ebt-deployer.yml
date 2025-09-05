@@ -213,10 +213,13 @@ jobs:
           echo "Updated log-streaming.config file with log-group-prefix: ${LOG_GROUP_PREFIX}"
           cat log-streaming.config
 
-          # Fetch the log-streaming.config file
+          # Fetch the apache-logs.config file
           FILE_URL="https://api.github.com/repos/OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher/contents/apache-logs.config"
           curl -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3.raw" -o apache-logs.config "$FILE_URL"
-          echo "Fetched log-streaming.config file."
+          echo "Fetched apache-logs.config file."
+          cat apache-logs.config
+
+           
 
       # Upload the WAR file to AWS S3 and update Elastic Beanstalk environment
       - name: Upload the WAR file to AWS
@@ -243,12 +246,12 @@ jobs:
 
           if [ -z "${{ inputs.force-root-wm-app-name }}" ] || [[ "${{ inputs.force-root-wm-app-name }}" =~ ^[fF](alse)?$ ]]; then
             echo "force-root-wm-app-name is empty or false, defaulting to false."
-            zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war $WM_APP_NAME.war .ebextensions/log-streaming.config
+            zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war $WM_APP_NAME.war .ebextensions/log-streaming.config .ebextensions/apache-logs.config
           else
             echo "force-root-wm-app-name is true"
             rm ROOT.war
             cp $WM_APP_NAME.war ROOT.war
-            zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war .ebextensions/log-streaming.config
+            zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war .ebextensions/log-streaming.config .ebextensions/apache-logs.config
           fi       
          
           unzip -l ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip
