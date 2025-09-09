@@ -213,11 +213,11 @@ jobs:
           echo "Updated log-streaming.config file with log-group-prefix: ${LOG_GROUP_PREFIX}"
           cat log-streaming.config
 
-          # Fetch the apache-logs.config file
-          FILE_URL="https://api.github.com/repos/OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher/contents/apache-logs.config"
-          curl -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3.raw" -o apache-logs.config "$FILE_URL"
-          echo "Fetched apache-logs.config file."
-          cat apache-logs.config
+          # # Fetch the apache-logs.config file
+          # FILE_URL="https://api.github.com/repos/OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher/contents/apache-logs.config"
+          # curl -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3.raw" -o apache-logs.config "$FILE_URL"
+          # echo "Fetched apache-logs.config file."
+          # cat apache-logs.config
 
            
 
