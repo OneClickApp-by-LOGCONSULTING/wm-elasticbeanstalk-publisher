@@ -216,6 +216,16 @@ jobs:
           sed -i "s/log_group_prefix/$LOG_GROUP_PREFIX/g" log-streaming.config
           echo "Updated log-streaming.config file with log-group-prefix: ${LOG_GROUP_PREFIX}"
           cat log-streaming.config           
+                # Fetch the log-streaming.config file from the GitHub repository
+      - name: Fetch loader-io.config.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Fetch the log-streaming.config file
+          FILE_URL="https://api.github.com/repos/OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher/contents/02-loaderio.config"
+          curl -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3.raw" -o 02-loaderio.config "$FILE_URL"
+          echo "Fetched 02-loaderio.config file." 
+          cat 02-loaderio.config
 
       # Upload the WAR file to AWS S3 and update Elastic Beanstalk environment
       - name: Upload the WAR file to AWS
@@ -235,10 +245,11 @@ jobs:
           fi
           mkdir .ebextensions 
           cp  log-streaming.config .ebextensions 
+          cp  02-loaderio.config .ebextensions 
           # Crea la cartella files dentro .ebextensions
           mkdir -p .ebextensions/files
           # Genera loader.txt dentro .ebextensions/files
-          echo "Questo è il loader.txt generato automaticamente" > .ebextensions/files/loader.txt
+          echo "Questo è il loader.txt generato automaticamente" > .ebextensions/files/${{ inputs.loader-io-token }}.txt
 
           # Verifica il contenuto
           echo "Contenuto di .ebextensions:"
