@@ -260,12 +260,12 @@ jobs:
 
           if [ -z "${{ inputs.force-root-wm-app-name }}" ] || [[ "${{ inputs.force-root-wm-app-name }}" =~ ^[fF](alse)?$ ]]; then
             echo "force-root-wm-app-name is empty or false, defaulting to false."
-            zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war $WM_APP_NAME.war .ebextensions/log-streaming.config .ebextensions/02-loaderio.config       
+            zip -r ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war $WM_APP_NAME.war .ebextensions
           else
             echo "force-root-wm-app-name is true"
             rm ROOT.war
             cp $WM_APP_NAME.war ROOT.war
-            zip ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war .ebextensions/log-streaming.config  .ebextensions/02-loaderio.config      
+            zip -r ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war .ebextensions
           fi       
          
           unzip -l ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip
