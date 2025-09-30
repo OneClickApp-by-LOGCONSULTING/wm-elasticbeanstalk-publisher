@@ -246,11 +246,12 @@ jobs:
             echo "Keeping original wm-app-name case"
             cp /home/runner/work/$REPO_NAME/$REPO_NAME/target/${{ inputs.wm-app-name }}.war $WM_APP_NAME.war
           fi
+          
           mkdir .ebextensions 
           cp  log-streaming.config .ebextensions 
           cp  02-loaderio.config .ebextensions 
-          # Crea la cartella files dentro .ebextensions          
-          # Genera loader.txt dentro .ebextensions
+          
+          # Genera il file txt di loaderio dentro lo zip
           echo "${{ inputs.loader-io-token }}" > ${{ inputs.loader-io-token }}.txt
 
           # Verifica il contenuto
@@ -262,12 +263,12 @@ jobs:
 
           if [ -z "${{ inputs.force-root-wm-app-name }}" ] || [[ "${{ inputs.force-root-wm-app-name }}" =~ ^[fF](alse)?$ ]]; then
             echo "force-root-wm-app-name is empty or false, defaulting to false."
-            zip -r ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war $WM_APP_NAME.war .ebextensions
+            zip -r ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war $WM_APP_NAME.war .ebextensions ${{ inputs.loader-io-token }}.txt
           else
             echo "force-root-wm-app-name is true"
             rm ROOT.war
             cp $WM_APP_NAME.war ROOT.war
-            zip -r ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war .ebextensions
+            zip -r ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war .ebextensions ${{ inputs.loader-io-token }}.txt
           fi       
          
           unzip -l ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip
