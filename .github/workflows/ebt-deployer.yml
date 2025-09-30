@@ -251,7 +251,7 @@ jobs:
           cp  02-loaderio.config .ebextensions 
           # Crea la cartella files dentro .ebextensions          
           # Genera loader.txt dentro .ebextensions
-          echo "${{ inputs.loader-io-token }}" > .ebextensions/${{ inputs.loader-io-token }}.txt
+          echo "${{ inputs.loader-io-token }}" > ${{ inputs.loader-io-token }}.txt
 
           # Verifica il contenuto
           echo "Contenuto di .ebextensions:"
