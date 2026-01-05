@@ -15,7 +15,7 @@ on:
       maven-version:
         required: false
         type: string
-        default: '3.9.9'  # Default Maven Version
+        default: '3.9.12'  # Default Maven Version
       java-version:
         required: false
         type: string
