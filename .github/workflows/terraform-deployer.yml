@@ -4,74 +4,128 @@ on:
   workflow_call:
     inputs:
       terraform_version:
-        description: 'Versione di Terraform da utilizzare'
+        description: 'Terraform version to use'
         type: string
         default: '1.11.3'
       aws_region:
-        description: 'Regione AWS'
+        description: 'AWS Region for deployment and S3 resources'
         type: string
         default: 'eu-west-1'
       working_directory:
-        description: 'Directory dei file Terraform'
+        description: 'Root directory for Terraform configuration files'
         type: string
         default: 'src/main/webapp/resources/IaaC'
       eb_env_name:
-        description: 'Nome ambiente Elastic Beanstalk'
+        description: 'Elastic Beanstalk environment name (e.g., connect-env)'
         type: string
-        required: true
+        default: ''
+        required: false
       eb_app_name:
-        description: 'Nome applicazione Elastic Beanstalk'
+        description: 'Elastic Beanstalk application name'
         type: string
-        required: true
-      # Parametri per il job finale (ebt-deployer)
+        default: ''
+        required: false
       node_version:
+        description: 'Node.js version for the application build'
         type: string
         default: '22.18.0'
+      npm_version:
+        description: 'NPM version to use'
+        type: string
+        default: '10.9.3'
       java_version:
+        description: 'Java JDK version'
         type: string
         default: '21'
+      maven_version:
+        description: 'Apache Maven version'
+        type: string
+        default: '3.9.11'
       s3_bucket_name:
+        description: 'S3 bucket name for uploading deployment artifacts'
         type: string
         required: true
+      wm_profile:
+        description: 'Application profile (e.g., prod, dev)'
+        type: string
+        default: 'prod'
+
     secrets:
       AWS_ROLE_TO_ASSUME_FOR_DEPLOY:
+        description: 'IAM Role ARN for OIDC authentication'
         required: true
 
 jobs:
   configure-elastic-beanstalk-enviroments:
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-    - uses: actions/checkout@v4.2.2
+      runs-on: ubuntu-latest
+      permissions:
+        id-token: write
+        contents: read
+      steps:
+      - uses: actions/checkout@v4.2.2
+  
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3.1.2
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+  
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
+          aws-region: ${{ inputs.aws_region }}
 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3.1.2
-      with:
-        terraform_version: ${{ inputs.terraform_version }}
+      - name: Extract S3 backend info from Terraform
+        working-directory: ${{ inputs.working_directory }}
+        id: s3info
+        run: |
+          TF_FILE=$(find . -name "*.tf" | head -n 1)
+          echo "Reading backend info from $TF_FILE"
+          
+          BUCKET=$(grep 'bucket\s*=' "$TF_FILE" | head -n1 | awk -F'"' '{print $2}')
+          REGION=$(grep 'region\s*=' "$TF_FILE" | head -n1 | awk -F'"' '{print $2}')
+          
+          echo "Bucket=$BUCKET"
+          echo "Region=$REGION"
+          
+          # Set output per GitHub Actions
+          echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
+          echo "region=$REGION" >> $GITHUB_OUTPUT
+      - name: Ensure S3 bucket exists
+        run: |
+          if ! aws s3api head-bucket --bucket "${{ steps.s3info.outputs.bucket }}" 2>/dev/null; then
+            echo "Bucket does not exist. Creating..."
+            aws s3api create-bucket \
+              --bucket "${{ steps.s3info.outputs.bucket }}" \
+              --region "${{ steps.s3info.outputs.region }}" \
+              $( [ "${{ steps.s3info.outputs.region }}" != "us-east-1" ] && echo "--create-bucket-configuration LocationConstraint=${{ steps.s3info.outputs.region }}" )
+          else
+            echo "Bucket already exists."
+          fi
 
-    - name: Configure AWS credentials via OIDC
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
-        aws-region: ${{ inputs.aws_region }}
-
-    - name: Terraform Init
-      working-directory: ${{ inputs.working_directory }}
-      run: terraform init -input=false
-
-    - name: Terraform Validate
-      working-directory: ${{ inputs.working_directory }}
-      run: terraform validate
-
-    - name: Terraform Plan & Apply
-      working-directory: ${{ inputs.working_directory }}
-      run: |
-        # Importazione condizionale dell'applicazione EB
-        terraform import aws_elastic_beanstalk_application.${{ inputs.eb_app_name }} ${{ inputs.eb_app_name }} || true
-        terraform plan -out=tfplan
-        terraform apply -auto-approve tfplan
+  
+      - name: Terraform Init
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform init -input=false
+  
+      - name: Terraform Validate
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform validate
+  
+      - name: Terraform Plan & Apply
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          # Logica di fallback: se eb_app_name è vuoto, usa il nome del repo
+          APP_NAME="${{ inputs.eb_app_name }}"
+          if [ -z "$APP_NAME" ]; then
+            APP_NAME="${{ github.event.repository.name }}"
+          fi
+          
+          echo "Using EB Application Name: $APP_NAME"
+          
+          terraform import aws_elastic_beanstalk_application.$APP_NAME $APP_NAME || true
+          terraform plan -out=tfplan
+          terraform apply -auto-approve tfplan
 
   wait-for-ready-enviroment:
     needs: configure-elastic-beanstalk-enviroments
