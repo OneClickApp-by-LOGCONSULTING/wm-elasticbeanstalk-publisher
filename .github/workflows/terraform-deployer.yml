@@ -129,7 +129,8 @@ jobs:
             aws s3api create-bucket \
               --bucket "${{ steps.s3info.outputs.bucket }}" \
               --region "${{ steps.s3info.outputs.region }}" \
-              $( [ "${{ steps.s3info.outputs.region }}" != "us-east-1" ] && echo "--create-bucket-configuration LocationConstraint=${{ steps.s3info.outputs.region }}" )
+                 --create-bucket-configuration LocationConstraint="${{ steps.s3info.outputs.region }}"
+              
           else
             echo "Bucket already exists."
           fi
@@ -141,7 +142,8 @@ jobs:
             aws s3api create-bucket \
               --bucket "${{ github.event.repository.name }}-ebt-deployments" \
               --region "${{ inputs.aws_region }}" \
-              $( [ "${{ github.event.repository.name }}-ebt-deployments" != "us-east-1" ] && echo "--create-bucket-configuration LocationConstraint=${{ github.event.repository.name }}-ebt-deployments" )
+              --create-bucket-configuration LocationConstraint="${{ inputs.aws_region }}"
+             
           else
             echo "Bucket already exists."
           fi
