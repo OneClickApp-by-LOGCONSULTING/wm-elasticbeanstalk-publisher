@@ -120,64 +120,70 @@ jobs:
           if [ -z "$APP_NAME" ]; then
             APP_NAME="${{ github.event.repository.name }}"
           fi
-          
-          echo "Using EB Application Name: $APP_NAME"
+          APP_NAME="$APP_NAME-app"
+          echo "Using EB Application Name: $APP_NAME-app ..."
           
           terraform import aws_elastic_beanstalk_application.$APP_NAME $APP_NAME || true
           terraform plan -out=tfplan
           terraform apply -auto-approve tfplan
 
-  # wait-for-ready-enviroment:
-  #   needs: configure-elastic-beanstalk-enviroments
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     id-token: write
-  #     contents: read
-  #   steps:
-  #   - name: Configure AWS credentials via OIDC
-  #     uses: aws-actions/configure-aws-credentials@v4
-  #     with:
-  #       role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
-  #       aws-region: ${{ inputs.aws_region }}
+  wait-for-ready-enviroment:
+    needs: configure-elastic-beanstalk-enviroments
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+    - name: Configure AWS credentials via OIDC
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
+        aws-region: ${{ inputs.aws_region }}
 
-  #   - name: Wait for Elastic Beanstalk environment to be ready
-  #     run: |
-  #         env_name="${{ inputs.eb_env_name }}"
-  #         max_retries=30
-  #         sleep_time=10
+    - name: Wait for Elastic Beanstalk environment to be ready
+      run: |
+          # Logica di fallback: se eb_env_name è vuoto, usa il nome del repo
+          ENV_NAME="${{ inputs.eb_env_name }}"
+          if [ -z "$ENV_NAME" ]; then
+            ENV_NAME="${{ github.event.repository.name }}"
+          fi
+          echo "Using EB Environment Name: $ENV_NAME"
+          ENV_NAME="$ENV_NAME-env"
+          max_retries=30
+          sleep_time=10
           
-  #         echo "Checking Elastic Beanstalk environment $env_name..."
+          echo "Checking Elastic Beanstalk environment $ENV_NAME ..."
           
-  #         version_label=$(aws elasticbeanstalk describe-environments \
-  #           --environment-names "$env_name" \
-  #           --query "Environments[0].VersionLabel" \
-  #           --output text)
+          version_label=$(aws elasticbeanstalk describe-environments \
+            --environment-names "$env_name" \
+            --query "Environments[0].VersionLabel" \
+            --output text)
           
-  #         if [[ "$version_label" == "Sample Application" || "$version_label" == "None" ]]; then
-  #           echo "Environment uses sample app. Skipping wait."
-  #           exit 0
-  #         fi
+          if [[ "$version_label" == "Sample Application" || "$version_label" == "None" ]]; then
+            echo "Environment uses sample app. Skipping wait."
+            exit 0
+          fi
           
-  #         for i in $(seq 1 $max_retries); do
-  #           status=$(aws elasticbeanstalk describe-environments \
-  #             --environment-names "$env_name" \
-  #             --query "Environments[0].Status" \
-  #             --output text)
+          for i in $(seq 1 $max_retries); do
+            status=$(aws elasticbeanstalk describe-environments \
+              --environment-names "$env_name" \
+              --query "Environments[0].Status" \
+              --output text)
             
-  #           health=$(aws elasticbeanstalk describe-environments \
-  #             --environment-names "$env_name" \
-  #             --query "Environments[0].Health" \
-  #             --output text)
+            health=$(aws elasticbeanstalk describe-environments \
+              --environment-names "$env_name" \
+              --query "Environments[0].Health" \
+              --output text)
             
-  #           echo "Attempt $i: Status = $status, Health = $health"
+            echo "Attempt $i: Status = $status, Health = $health"
             
-  #           if [ "$status" = "Ready" ] && { [ "$health" = "Green" ] || [ "$health" = "Ok" ]; }; then
-  #             echo "Environment is ready."
-  #             exit 0
-  #           fi
-  #           sleep $sleep_time
-  #         done
-  #         exit 1
+            if [ "$status" = "Ready" ] && { [ "$health" = "Green" ] || [ "$health" = "Ok" ]; }; then
+              echo "Environment is ready."
+              exit 0
+            fi
+            sleep $sleep_time
+          done
+          exit 1
 
   # call-build-and-deploy:
   #   needs: wait-for-ready-enviroment
