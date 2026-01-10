@@ -102,10 +102,13 @@ jobs:
           BUCKET=${BUCKET:-"unknown-bucket"}
           KEY=${KEY:-"unknown-key"}
           REGION=${REGION:-"unknown-region"}
-      
+          echo "------------------------Bucket------------------------------"      
           echo "Bucket=$BUCKET"
+          echo "-------------------------Key-----------------------------"      
           echo "Key=$KEY"
+          echo "----------------------------Region--------------------------"      
           echo "Region=$REGION"
+          echo "------------------------------------------------------"      
       
           # 3️⃣ Output GitHub Actions
           echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
