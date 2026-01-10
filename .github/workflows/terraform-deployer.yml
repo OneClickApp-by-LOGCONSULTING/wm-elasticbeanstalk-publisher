@@ -68,9 +68,10 @@ on:
 
 jobs:
   configure-elastic-beanstalk-enviroments:
+      
       runs-on: ubuntu-latest
       outputs:
-        eb_app_name: ${{ steps.resolve.outputs.eb_app_name }}
+        eb_app_name: ${{ steps.configure-app.outputs.eb_app_name }}
       permissions:
         id-token: write
         contents: read
@@ -157,6 +158,7 @@ jobs:
         run: terraform validate
   
       - name: Terraform Plan & Apply
+        id: configure-app
         working-directory: ${{ inputs.working_directory }}
         run: |
           # Logica di fallback: se eb_app_name è vuoto, usa il nome del repo
@@ -177,7 +179,7 @@ jobs:
     needs: configure-elastic-beanstalk-enviroments
     runs-on: ubuntu-latest
     outputs:      
-      eb_env_name: ${{ steps.resolve.outputs.eb_env_name }}
+      eb_env_name: ${{ steps.configure-env.outputs.eb_env_name }}
     permissions:
       id-token: write
       contents: read
@@ -189,6 +191,7 @@ jobs:
         aws-region: ${{ inputs.aws_region }}
 
     - name: Wait for Elastic Beanstalk environment to be ready
+      id: configure-env
       run: |
           # Logica di fallback: se eb_env_name è vuoto, usa il nome del repo
           ENV_NAME="${{ inputs.eb_env_name }}"
