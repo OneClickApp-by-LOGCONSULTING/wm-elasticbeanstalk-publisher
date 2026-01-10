@@ -68,9 +68,11 @@ on:
          default: ''
     secrets:
        aws-access-key-id: # AWS AccessKey
-        required: true      
+        required: false     
        aws-secret-access-key: # AWS SecretKey
-        required: true
+        required: false
+       aws-role-to-assume:        
+        required: false
         
 jobs:
   build:
@@ -175,13 +177,22 @@ jobs:
           timeZone: 0
           format: 'YYYY-MM-DD-HH-mm-ss'
 
-      # Configure AWS credentials
-      - name: Configure AWS credentials
+      # Configure AWS credentials via Access Key/Secret Key
+      - name: Configure AWS credentials via AK/SK
+        if: ${{ secrets.aws-role-to-assume == '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
+          aws-region: ${{ inputs.aws-region }}
           aws-access-key-id: ${{ secrets.aws-access-key-id }}
           aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
+
+      # Configure AWS credentials via OIDC Role
+      - name: Configure AWS credentials via OIDC role
+        if: ${{ secrets.aws-role-to-assume != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
           aws-region: ${{ inputs.aws-region }}
+          role-to-assume: ${{ secrets.aws-role-to-assume }}
 
       # Set default for use-lowercase if the parameter is empty
       - name: Set default for use-lowercase if empty
