@@ -168,7 +168,7 @@ jobs:
           fi
           APP_NAME="$APP_NAME-app"
           echo "Using EB Application Name: $APP_NAME ..."
-          echo "eb_app_name=$APP_NAME-app" >> $GITHUB_OUTPUT
+          echo "eb_app_name=$APP_NAME" >> $GITHUB_OUTPUT
           
           
           terraform import aws_elastic_beanstalk_application.$APP_NAME $APP_NAME || true
@@ -200,7 +200,7 @@ jobs:
           fi
           ENV_NAME="$ENV_NAME-env"
           echo "Using EB Environment Name: $ENV_NAME"
-          echo "eb_env_name=$ENV_NAME-env" >> $GITHUB_OUTPUT
+          echo "eb_env_name=$ENV_NAME" >> $GITHUB_OUTPUT
           max_retries=30
           sleep_time=10
           
@@ -252,10 +252,10 @@ jobs:
       npm-version: ${{ inputs.npm_version }}
       maven-version: ${{ inputs.maven_version }}
       java-version: ${{ inputs.java_version }}
-      aws-region: ${{ inputs.aws_region }}
-      environment-name: ${{ needs.configure-elastic-beanstalk-enviroments.outputs.eb_env_name }}
+      aws-region: ${{ inputs.aws_region }}      
+      environment-name: ${{ needs.wait-for-ready-enviroment.outputs.eb_env_name }}
       wm-app-name: ${{ github.event.repository.name }}
-      beanstalk-application-name: ${{ needs.wait-for-ready-enviroment.outputs.eb_app_name }}
+      beanstalk-application-name: ${{ needs.configure-elastic-beanstalk-enviroments.outputs.eb_app_name }}
       wm-profile: ${{ inputs.wm_profile }}
       aws-s3-bucket-name: ${{ github.event.repository.name }}-ebt-deployments
       aws-s3-bucket-region: ${{ inputs.aws_region }}
