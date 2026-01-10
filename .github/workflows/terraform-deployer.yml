@@ -139,7 +139,7 @@ jobs:
           if ! aws s3api head-bucket --bucket "${{ github.event.repository.name }}-ebt-deployments" 2>/dev/null; then
             echo "Bucket does not exist. Creating..."
             aws s3api create-bucket \
-              --bucket "$${{ github.event.repository.name }}-ebt-deployments" \
+              --bucket "${{ github.event.repository.name }}-ebt-deployments" \
               --region "${{ inputs.aws_region }}" \
               $( [ "${{ github.event.repository.name }}-ebt-deployments" != "us-east-1" ] && echo "--create-bucket-configuration LocationConstraint=${{ github.event.repository.name }}-ebt-deployments" )
           else
