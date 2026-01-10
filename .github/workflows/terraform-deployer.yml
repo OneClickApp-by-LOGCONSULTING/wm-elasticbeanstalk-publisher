@@ -87,28 +87,24 @@ jobs:
             exit 1
           fi
       
-          echo "Inizializzo Terraform..."
+
           terraform init -input=false -reconfigure
-          
       
-          # 2️⃣ Crea un JSON dello stato del backend
-          echo "Generazione JSON dello stato Terraform..."
-          cat .terraform/terraform.tfstate
-          
-          # 3️⃣ Estrai informazioni S3 dal JSON in modo sicuro
-          BUCKET=$(jq -r '.values.root_module.backend_config.bucket // "unknown-bucket"' tfstate.json)
-          KEY=$(jq -r '.values.root_module.backend_config.key // "unknown-key"' tfstate.json)
-          REGION=$(jq -r '.values.root_module.backend_config.region // "unknown-region"' tfstate.json)
+          STATE_FILE=".terraform/terraform.tfstate"
       
-          echo "---------------------Bucket---------------------------"
+          if [[ ! -f "$STATE_FILE" ]]; then
+            echo "Errore: backend state non trovato"
+            exit 1
+          fi
+      
+          BUCKET=$(jq -r '.backend.config.bucket'  "$STATE_FILE")
+          KEY=$(jq -r '.backend.config.key'        "$STATE_FILE")
+          REGION=$(jq -r '.backend.config.region'  "$STATE_FILE")
+      
           echo "Bucket=$BUCKET"
-          echo "-------------------------Key--------------------------"
           echo "Key=$KEY"
-          echo "----------------------Region--------------------------"
           echo "Region=$REGION"
-          echo "------------------------------------------------------"
       
-          # 4️⃣ Output GitHub Actions
           echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
           echo "key=$KEY" >> $GITHUB_OUTPUT
           echo "region=$REGION" >> $GITHUB_OUTPUT
