@@ -122,7 +122,7 @@ jobs:
           echo "key=$KEY" >> $GITHUB_OUTPUT
           echo "region=$REGION" >> $GITHUB_OUTPUT
           
-      - name: Ensure S3 bucket exists
+      - name: Ensure S3 bucket exists for tettaform states
         run: |
           if ! aws s3api head-bucket --bucket "${{ steps.s3info.outputs.bucket }}" 2>/dev/null; then
             echo "Bucket does not exist. Creating..."
@@ -130,6 +130,18 @@ jobs:
               --bucket "${{ steps.s3info.outputs.bucket }}" \
               --region "${{ steps.s3info.outputs.region }}" \
               $( [ "${{ steps.s3info.outputs.region }}" != "us-east-1" ] && echo "--create-bucket-configuration LocationConstraint=${{ steps.s3info.outputs.region }}" )
+          else
+            echo "Bucket already exists."
+          fi
+
+      - name: Ensure S3 bucket exists for ebt-deployments artifacts
+        run: |
+          if ! aws s3api head-bucket --bucket "${{ github.event.repository.name }}-ebt-deployments" 2>/dev/null; then
+            echo "Bucket does not exist. Creating..."
+            aws s3api create-bucket \
+              --bucket "$${{ github.event.repository.name }}-ebt-deployments" \
+              --region "${{ inputs.aws_region }}" \
+              $( [ "${{ github.event.repository.name }}-ebt-deployments" != "us-east-1" ] && echo "--create-bucket-configuration LocationConstraint=${{ github.event.repository.name }}-ebt-deployments" )
           else
             echo "Bucket already exists."
           fi
@@ -240,8 +252,8 @@ jobs:
       wm-app-name: ${{ github.event.repository.name }}
       beanstalk-application-name: ${{ needs.wait-for-ready-enviroment.outputs.eb_app_name }}
       wm-profile: ${{ inputs.wm_profile }}
-      aws-s3-bucket-name: ${{ inputs.s3_bucket_name }}
+      aws-s3-bucket-name: ${{ github.event.repository.name }}-ebt-deployments
       aws-s3-bucket-region: ${{ inputs.aws_region }}
       force-lowercase-wm-app-name: false
-      log-group-prefix: ${{ inputs.eb_app_name }}
+      log-group-prefix: ${{ github.event.repository.name }}
       force-root-wm-app-name: true
