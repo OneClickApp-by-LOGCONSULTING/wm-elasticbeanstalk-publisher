@@ -114,6 +114,17 @@ jobs:
           echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
           echo "key=$KEY" >> $GITHUB_OUTPUT
           echo "region=$REGION" >> $GITHUB_OUTPUT
+      - name: Ensure S3 bucket exists
+        run: |
+          if ! aws s3api head-bucket --bucket "${{ steps.s3info.outputs.bucket }}" 2>/dev/null; then
+            echo "Bucket does not exist. Creating..."
+            aws s3api create-bucket \
+              --bucket "${{ steps.s3info.outputs.bucket }}" \
+              --region "${{ steps.s3info.outputs.region }}" \
+              $( [ "${{ steps.s3info.outputs.region }}" != "us-east-1" ] && echo "--create-bucket-configuration LocationConstraint=${{ steps.s3info.outputs.region }}" )
+          else
+            echo "Bucket already exists."
+          fi
 
 
   wait-for-ready-enviroment:
