@@ -122,7 +122,7 @@ jobs:
           fi
       - name: Terraform Init
         working-directory: ${{ inputs.working_directory }}
-        run: terraform init -input=false
+        run: terraform init -input=false -lock=false
   
       - name: Terraform Validate
         working-directory: ${{ inputs.working_directory }}
