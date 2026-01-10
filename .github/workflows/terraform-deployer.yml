@@ -69,6 +69,8 @@ on:
 jobs:
   configure-elastic-beanstalk-enviroments:
       runs-on: ubuntu-latest
+      outputs:
+        eb_app_name: ${{ steps.resolve.outputs.eb_app_name }}
       permissions:
         id-token: write
         contents: read
@@ -150,6 +152,8 @@ jobs:
           fi
           APP_NAME="$APP_NAME-app"
           echo "Using EB Application Name: $APP_NAME ..."
+          echo "eb_app_name=$APP_NAME-app" >> $GITHUB_OUTPUT
+          
           
           terraform import aws_elastic_beanstalk_application.$APP_NAME $APP_NAME || true
           terraform plan -lock=false  -out=tfplan
@@ -158,6 +162,8 @@ jobs:
   wait-for-ready-enviroment:
     needs: configure-elastic-beanstalk-enviroments
     runs-on: ubuntu-latest
+    outputs:      
+      eb_env_name: ${{ steps.resolve.outputs.eb_env_name }}
     permissions:
       id-token: write
       contents: read
@@ -177,6 +183,7 @@ jobs:
           fi
           echo "Using EB Environment Name: $ENV_NAME"
           ENV_NAME="$ENV_NAME-env"
+          echo "eb_env_name=$ENV_NAME-env" >> $GITHUB_OUTPUT
           max_retries=30
           sleep_time=10
           
@@ -214,7 +221,9 @@ jobs:
           exit 1
 
   call-build-and-deploy:
-    needs: wait-for-ready-enviroment
+    needs: 
+      - wait-for-ready-enviroment
+      - configure-elastic-beanstalk-enviroments
     permissions:
       id-token: write
       contents: read
@@ -227,9 +236,9 @@ jobs:
       maven-version: ${{ inputs.maven_version }}
       java-version: ${{ inputs.java_version }}
       aws-region: ${{ inputs.aws_region }}
-      environment-name: ${{ inputs.eb_env_name }}-env
-      wm-app-name: ${{ inputs.eb_app_name }}
-      beanstalk-application-name: ${{ inputs.eb_app_name }}-app
+      environment-name: ${{ needs.configure-elastic-beanstalk-enviroments.outputs.eb_env_name }}
+      wm-app-name: ${{ github.event.repository.name }}
+      beanstalk-application-name: ${{ needs.wait-for-ready-enviroment.outputs.eb_app_name }}
       wm-profile: ${{ inputs.wm_profile }}
       aws-s3-bucket-name: ${{ inputs.s3_bucket_name }}
       aws-s3-bucket-region: ${{ inputs.aws_region }}
