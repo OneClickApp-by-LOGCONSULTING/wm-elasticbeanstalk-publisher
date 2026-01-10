@@ -1,0 +1,150 @@
+name: Reusable Terraform EB Deploy
+
+on:
+  workflow_call:
+    inputs:
+      terraform_version:
+        description: 'Versione di Terraform da utilizzare'
+        type: string
+        default: '1.11.3'
+      aws_region:
+        description: 'Regione AWS'
+        type: string
+        default: 'eu-west-1'
+      working_directory:
+        description: 'Directory dei file Terraform'
+        type: string
+        default: 'src/main/webapp/resources/IaaC'
+      eb_env_name:
+        description: 'Nome ambiente Elastic Beanstalk'
+        type: string
+        required: true
+      eb_app_name:
+        description: 'Nome applicazione Elastic Beanstalk'
+        type: string
+        required: true
+      # Parametri per il job finale (ebt-deployer)
+      node_version:
+        type: string
+        default: '22.18.0'
+      java_version:
+        type: string
+        default: '21'
+      s3_bucket_name:
+        type: string
+        required: true
+    secrets:
+      AWS_ROLE_TO_ASSUME_FOR_DEPLOY:
+        required: true
+
+jobs:
+  configure-elastic-beanstalk-enviroments:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+    - uses: actions/checkout@v4.2.2
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3.1.2
+      with:
+        terraform_version: ${{ inputs.terraform_version }}
+
+    - name: Configure AWS credentials via OIDC
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
+        aws-region: ${{ inputs.aws_region }}
+
+    - name: Terraform Init
+      working-directory: ${{ inputs.working_directory }}
+      run: terraform init -input=false
+
+    - name: Terraform Validate
+      working-directory: ${{ inputs.working_directory }}
+      run: terraform validate
+
+    - name: Terraform Plan & Apply
+      working-directory: ${{ inputs.working_directory }}
+      run: |
+        # Importazione condizionale dell'applicazione EB
+        terraform import aws_elastic_beanstalk_application.${{ inputs.eb_app_name }} ${{ inputs.eb_app_name }} || true
+        terraform plan -out=tfplan
+        terraform apply -auto-approve tfplan
+
+  wait-for-ready-enviroment:
+    needs: configure-elastic-beanstalk-enviroments
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+    - name: Configure AWS credentials via OIDC
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
+        aws-region: ${{ inputs.aws_region }}
+
+    - name: Wait for Elastic Beanstalk environment to be ready
+      run: |
+          env_name="${{ inputs.eb_env_name }}"
+          max_retries=30
+          sleep_time=10
+          
+          echo "Checking Elastic Beanstalk environment $env_name..."
+          
+          version_label=$(aws elasticbeanstalk describe-environments \
+            --environment-names "$env_name" \
+            --query "Environments[0].VersionLabel" \
+            --output text)
+          
+          if [[ "$version_label" == "Sample Application" || "$version_label" == "None" ]]; then
+            echo "Environment uses sample app. Skipping wait."
+            exit 0
+          fi
+          
+          for i in $(seq 1 $max_retries); do
+            status=$(aws elasticbeanstalk describe-environments \
+              --environment-names "$env_name" \
+              --query "Environments[0].Status" \
+              --output text)
+            
+            health=$(aws elasticbeanstalk describe-environments \
+              --environment-names "$env_name" \
+              --query "Environments[0].Health" \
+              --output text)
+            
+            echo "Attempt $i: Status = $status, Health = $health"
+            
+            if [ "$status" = "Ready" ] && { [ "$health" = "Green" ] || [ "$health" = "Ok" ]; }; then
+              echo "Environment is ready."
+              exit 0
+            fi
+            sleep $sleep_time
+          done
+          exit 1
+
+  call-build-and-deploy:
+    needs: wait-for-ready-enviroment
+    permissions:
+      id-token: write
+      contents: read
+    uses: OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher/.github/workflows/ebt-deployer.yml@main
+    secrets: 
+       AWS_ROLE_TO_ASSUME_FOR_DEPLOY: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
+    with:
+      node-version: ${{ inputs.node_version }}
+      npm-version: '10.9.3'
+      maven-version: '3.9.11'
+      java-version: ${{ inputs.java_version }}
+      aws-region: ${{ inputs.aws_region }}
+      environment-name: ${{ inputs.eb_env_name }}
+      wm-app-name: ${{ inputs.eb_app_name }}
+      beanstalk-application-name: ${{ inputs.eb_app_name }}
+      wm-profile: 'prod'
+      aws-s3-bucket-name: ${{ inputs.s3_bucket_name }}
+      aws-s3-bucket-region: ${{ inputs.aws_region }}
+      force-lowercase-wm-app-name: false
+      log-group-prefix: ${{ inputs.eb_app_name }}
+      force-root-wm-app-name: true
