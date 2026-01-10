@@ -138,7 +138,7 @@ jobs:
             APP_NAME="${{ github.event.repository.name }}"
           fi
           APP_NAME="$APP_NAME-app"
-          echo "Using EB Application Name: $APP_NAME-app ..."
+          echo "Using EB Application Name: $APP_NAME ..."
           
           terraform import aws_elastic_beanstalk_application.$APP_NAME $APP_NAME || true
           terraform plan -lock=false  -out=tfplan
