@@ -49,6 +49,25 @@ on:
         description: 'Application profile (e.g., prod, dev)'
         type: string
         default: 'prod'
+      aws-s3-bucket-name: #AWS S3 bucket name where to store the WAR artifact file built by maven
+        required: true
+        type: string
+        default: ''
+      aws-s3-bucket-region: #
+        required: true
+        type: string
+        default: 'eu-south-1'
+      log-group-prefix:
+         required: false
+         type: string  
+      root-war-url:
+         required: false
+         type: string  
+         default: ''
+      loader-io-token:
+         required: false
+         type: string  
+         default: ''
 
     secrets:
       AWS_ROLE_TO_ASSUME_FOR_DEPLOY:
@@ -219,7 +238,7 @@ jobs:
       environment-name: ${{ inputs.eb_env_name }}
       wm-app-name: ${{ inputs.eb_app_name }}
       beanstalk-application-name: ${{ inputs.eb_app_name }}
-      wm-profile: 'prod'
+      wm-profile: ${{ inputs.wm_profile }}
       aws-s3-bucket-name: ${{ inputs.s3_bucket_name }}
       aws-s3-bucket-region: ${{ inputs.aws_region }}
       force-lowercase-wm-app-name: false
