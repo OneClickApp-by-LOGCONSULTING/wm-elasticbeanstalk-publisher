@@ -177,21 +177,12 @@ jobs:
           timeZone: 0
           format: 'YYYY-MM-DD-HH-mm-ss'
 
-      # Configure AWS credentials via Access Key/Secret Key
-      - name: Configure AWS credentials via AK/SK
-        if: ${{ secrets.aws-role-to-assume == '' || secrets.aws-role-to-assume == null }}
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-region: ${{ secrets.aws-region }}
+          aws-region: ${{ inputs.aws-region }}
           aws-access-key-id: ${{ secrets.aws-access-key-id }}
-          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
-      
-      # Configure AWS credentials via OIDC Role
-      - name: Configure AWS credentials via OIDC role
-        if: ${{ secrets.aws-role-to-assume != '' && secrets.aws-role-to-assume != null }}
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-region: ${{ secrets.aws-region }}
+          aws-secret-access-key: ${{ secrets.aws-secret-acess-key }}
           role-to-assume: ${{ secrets.aws-role-to-assume }}
 
 
