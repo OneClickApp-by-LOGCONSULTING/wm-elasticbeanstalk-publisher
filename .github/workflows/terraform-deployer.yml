@@ -75,45 +75,43 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
           aws-region: ${{ inputs.aws_region }}
 
-      - name: Extract S3 backend info from Terraform
+      - name: Extract S3 backend info from Terraform (safe)
         working-directory: ${{ inputs.working_directory }}
         id: s3info
         run: |
           set -e
       
-          # 1️⃣ Controlla main.tf
+          # 1️⃣ Inizializza Terraform
           if [[ ! -f "main.tf" ]]; then
             echo "Errore: main.tf non trovato!"
             exit 1
           fi
       
-          echo "main.tf trovato, inizializzo Terraform in modalità dry-run..."
-          terraform init -backend=false -input=false
+          echo "Inizializzo Terraform..."
           terraform init -input=false -reconfigure
       
-          TF_FILE=$(find . -name "*.tf" | head -n 1)
+          # 2️⃣ Crea un JSON dello stato del backend
+          echo "Generazione JSON dello stato Terraform..."
+          terraform show -json > tfstate.json
       
-          # 2️⃣ Estrazione sicura
-          BUCKET=$(grep -A10 'backend "s3"' "$TF_FILE" | grep -E 'bucket\s*=' || echo "" | head -n1 | awk -F'"' '{print $2}')
-          KEY=$(grep -A10 'backend "s3"' "$TF_FILE" | grep -E 'key\s*=' || echo "" | head -n1 | awk -F'"' '{print $2}')
-          REGION=$(grep -A10 'backend "s3"' "$TF_FILE" | grep -E 'region\s*=' || echo "" | head -n1 | awk -F'"' '{print $2}')
+          # 3️⃣ Estrai informazioni S3 dal JSON in modo sicuro
+          BUCKET=$(jq -r '.values.root_module.backend_config.bucket // "unknown-bucket"' tfstate.json)
+          KEY=$(jq -r '.values.root_module.backend_config.key // "unknown-key"' tfstate.json)
+          REGION=$(jq -r '.values.root_module.backend_config.region // "unknown-region"' tfstate.json)
       
-          # fallback se nulla trovato
-          BUCKET=${BUCKET:-"unknown-bucket"}
-          KEY=${KEY:-"unknown-key"}
-          REGION=${REGION:-"unknown-region"}
-          echo "------------------------Bucket------------------------------"      
+          echo "---------------------Bucket---------------------------"
           echo "Bucket=$BUCKET"
-          echo "-------------------------Key-----------------------------"      
+          echo "-------------------------Key--------------------------"
           echo "Key=$KEY"
-          echo "----------------------------Region--------------------------"      
+          echo "----------------------Region--------------------------"
           echo "Region=$REGION"
-          echo "------------------------------------------------------"      
+          echo "------------------------------------------------------"
       
-          # 3️⃣ Output GitHub Actions
+          # 4️⃣ Output GitHub Actions
           echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
           echo "key=$KEY" >> $GITHUB_OUTPUT
           echo "region=$REGION" >> $GITHUB_OUTPUT
+          
       - name: Ensure S3 bucket exists
         run: |
           if ! aws s3api head-bucket --bucket "${{ steps.s3info.outputs.bucket }}" 2>/dev/null; then
@@ -125,7 +123,28 @@ jobs:
           else
             echo "Bucket already exists."
           fi
-
+      - name: Terraform Init
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform init -input=false
+  
+      - name: Terraform Validate
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform validate
+  
+      - name: Terraform Plan & Apply
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          # Logica di fallback: se eb_app_name è vuoto, usa il nome del repo
+          APP_NAME="${{ inputs.eb_app_name }}"
+          if [ -z "$APP_NAME" ]; then
+            APP_NAME="${{ github.event.repository.name }}"
+          fi
+          APP_NAME="$APP_NAME-app"
+          echo "Using EB Application Name: $APP_NAME-app ..."
+          
+          terraform import aws_elastic_beanstalk_application.$APP_NAME $APP_NAME || true
+          terraform plan -out=tfplan
+          terraform apply -auto-approve tfplan
 
   wait-for-ready-enviroment:
     needs: configure-elastic-beanstalk-enviroments
