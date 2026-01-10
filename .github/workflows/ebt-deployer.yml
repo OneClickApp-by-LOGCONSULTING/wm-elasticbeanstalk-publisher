@@ -80,7 +80,7 @@ jobs:
     timeout-minutes: 20  # Timeout for the build job
     runs-on: ubuntu-latest  # Use the latest Ubuntu runner provided by GitHub
     permissions:
-      id-token: write
+      id-token: none
       contents: read
     steps:
       # Output GitHub event info
