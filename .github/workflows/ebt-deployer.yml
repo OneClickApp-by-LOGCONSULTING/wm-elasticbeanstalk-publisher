@@ -79,9 +79,6 @@ jobs:
     name: Build and Deploy WM to AWS Elastic Beanstalk
     timeout-minutes: 20  # Timeout for the build job
     runs-on: ubuntu-latest  # Use the latest Ubuntu runner provided by GitHub
-    permissions:
-      id-token: none
-      contents: read
     steps:
       # Output GitHub event info
       - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
@@ -179,13 +176,36 @@ jobs:
           timeZone: 0
           format: 'YYYY-MM-DD-HH-mm-ss'
 
-      - name: Configure AWS credentials
+      - name: Decide AWS auth method
+        id: aws-auth
+        run: |
+          if [ -n "${AWS_ROLE_TO_ASSUME}" ]; then
+            echo "mode=role" >> $GITHUB_OUTPUT
+          elif [ -n "${AWS_ACCESS_KEY_ID}" ] && [ -n "${AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "mode=keys" >> $GITHUB_OUTPUT
+          else
+            echo "❌ No AWS credentials provided"
+            exit 1
+          fi
+        env:
+          AWS_ROLE_TO_ASSUME: ${{ secrets.aws-role-to-assume }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.aws-access-key-id }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.aws-secret-access-key }}
+          
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ steps.aws-auth.outputs.mode == 'role' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-region: ${{ inputs.aws-region }}
-          aws-access-key-id: ${{ secrets.aws-access-key-id }}
-          aws-secret-access-key: ${{ secrets.aws-secret-acess-key }}
           role-to-assume: ${{ secrets.aws-role-to-assume }}
+          aws-region: ${{ inputs.aws-region }}
+          
+      - name: Configure AWS credentials (Access Keys)
+        if: ${{ steps.aws-auth.outputs.mode == 'keys' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.aws-access-key-id }}
+          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
+          aws-region: ${{ inputs.aws-region }}
 
 
       # Set default for use-lowercase if the parameter is empty
