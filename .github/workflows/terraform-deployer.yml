@@ -172,7 +172,7 @@ jobs:
           echo "Checking Elastic Beanstalk environment $ENV_NAME ..."
           
           version_label=$(aws elasticbeanstalk describe-environments \
-            --environment-names "$env_name" \
+            --environment-names "$ENV_NAME" \
             --query "Environments[0].VersionLabel" \
             --output text)
           
@@ -183,12 +183,12 @@ jobs:
           
           for i in $(seq 1 $max_retries); do
             status=$(aws elasticbeanstalk describe-environments \
-              --environment-names "$env_name" \
+              --environment-names "$ENV_NAME" \
               --query "Environments[0].Status" \
               --output text)
             
             health=$(aws elasticbeanstalk describe-environments \
-              --environment-names "$env_name" \
+              --environment-names "$ENV_NAME" \
               --query "Environments[0].Health" \
               --output text)
             
