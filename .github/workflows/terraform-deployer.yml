@@ -181,8 +181,8 @@ jobs:
           if [ -z "$ENV_NAME" ]; then
             ENV_NAME="${{ github.event.repository.name }}"
           fi
-          echo "Using EB Environment Name: $ENV_NAME"
           ENV_NAME="$ENV_NAME-env"
+          echo "Using EB Environment Name: $ENV_NAME"
           echo "eb_env_name=$ENV_NAME-env" >> $GITHUB_OUTPUT
           max_retries=30
           sleep_time=10
