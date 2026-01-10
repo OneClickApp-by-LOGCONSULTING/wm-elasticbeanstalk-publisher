@@ -201,26 +201,26 @@ jobs:
           done
           exit 1
 
-  # call-build-and-deploy:
-  #   needs: wait-for-ready-enviroment
-  #   permissions:
-  #     id-token: write
-  #     contents: read
-  #   uses: OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher/.github/workflows/ebt-deployer.yml@main
-  #   secrets: 
-  #      AWS_ROLE_TO_ASSUME_FOR_DEPLOY: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
-  #   with:
-  #     node-version: ${{ inputs.node_version }}
-  #     npm-version: '10.9.3'
-  #     maven-version: '3.9.11'
-  #     java-version: ${{ inputs.java_version }}
-  #     aws-region: ${{ inputs.aws_region }}
-  #     environment-name: ${{ inputs.eb_env_name }}
-  #     wm-app-name: ${{ inputs.eb_app_name }}
-  #     beanstalk-application-name: ${{ inputs.eb_app_name }}
-  #     wm-profile: 'prod'
-  #     aws-s3-bucket-name: ${{ inputs.s3_bucket_name }}
-  #     aws-s3-bucket-region: ${{ inputs.aws_region }}
-  #     force-lowercase-wm-app-name: false
-  #     log-group-prefix: ${{ inputs.eb_app_name }}
-  #     force-root-wm-app-name: true
+  call-build-and-deploy:
+    needs: wait-for-ready-enviroment
+    permissions:
+      id-token: write
+      contents: read
+    uses: OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher/.github/workflows/ebt-deployer.yml@main
+    secrets: 
+       AWS_ROLE_TO_ASSUME_FOR_DEPLOY: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
+    with:
+      node-version: ${{ inputs.node_version }}
+      npm-version: ${{ inputs.npm_version }}
+      maven-version: ${{ inputs.maven_version }}
+      java-version: ${{ inputs.java_version }}
+      aws-region: ${{ inputs.aws_region }}
+      environment-name: ${{ inputs.eb_env_name }}
+      wm-app-name: ${{ inputs.eb_app_name }}
+      beanstalk-application-name: ${{ inputs.eb_app_name }}
+      wm-profile: 'prod'
+      aws-s3-bucket-name: ${{ inputs.s3_bucket_name }}
+      aws-s3-bucket-region: ${{ inputs.aws_region }}
+      force-lowercase-wm-app-name: false
+      log-group-prefix: ${{ inputs.eb_app_name }}
+      force-root-wm-app-name: true
