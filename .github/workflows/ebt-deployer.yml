@@ -1,5 +1,5 @@
 name: REUSABLE ACTION - Build and Deploy an WAVEMAKER application to AWS Elastic Beanstalk
-# WAVEMAKER RELEASE NOTES https://docs.wavemaker.com/learn/wavemaker-release-notes/
+#  WAVEMAKER RELEASE NOTES https://docs.wavemaker.com/learn/wavemaker-release-notes/
 
 on:
   workflow_call:
