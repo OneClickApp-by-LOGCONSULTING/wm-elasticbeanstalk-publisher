@@ -81,84 +81,37 @@ jobs:
         run: |
           set -e
       
-          # 1️⃣ Controlla se esiste main.tf
+          # 1️⃣ Controlla main.tf
           if [[ ! -f "main.tf" ]]; then
             echo "Errore: main.tf non trovato!"
             exit 1
           fi
       
           echo "main.tf trovato, inizializzo Terraform in modalità dry-run..."
-      
-          # 2️⃣ Inizializza terraform senza modificare il backend (dry-run)
           terraform init -backend=false -input=false
-      
-          # 3️⃣ Inizializza il backend per leggere le configurazioni reali
           terraform init -input=false -reconfigure
       
-          # 4️⃣ Estrai bucket, key e region dal backend S3
-          # Nota: usa grep/awk come fallback se non si trovano variabili
           TF_FILE=$(find . -name "*.tf" | head -n 1)
       
-          BUCKET=$(grep -A5 'backend "s3"' "$TF_FILE" | grep 'bucket\s*=' | head -n1 | awk -F'"' '{print $2}')
-          KEY=$(grep -A5 'backend "s3"' "$TF_FILE" | grep 'key\s*=' | head -n1 | awk -F'"' '{print $2}')
-          REGION=$(grep -A5 'backend "s3"' "$TF_FILE" | grep 'region\s*=' | head -n1 | awk -F'"' '{print $2}')
+          # 2️⃣ Estrazione sicura
+          BUCKET=$(grep -A10 'backend "s3"' "$TF_FILE" | grep -E 'bucket\s*=' || echo "" | head -n1 | awk -F'"' '{print $2}')
+          KEY=$(grep -A10 'backend "s3"' "$TF_FILE" | grep -E 'key\s*=' || echo "" | head -n1 | awk -F'"' '{print $2}')
+          REGION=$(grep -A10 'backend "s3"' "$TF_FILE" | grep -E 'region\s*=' || echo "" | head -n1 | awk -F'"' '{print $2}')
       
-          # Controllo se li ha trovati
-          if [[ -z "$BUCKET" ]]; then
-            echo "Bucket non trovato nel backend!"
-          fi
-          if [[ -z "$KEY" ]]; then
-            echo "Key non trovato nel backend!"
-          fi
-          if [[ -z "$REGION" ]]; then
-            echo "Region non trovata nel backend!"
-          fi
+          # fallback se nulla trovato
+          BUCKET=${BUCKET:-"unknown-bucket"}
+          KEY=${KEY:-"unknown-key"}
+          REGION=${REGION:-"unknown-region"}
       
           echo "Bucket=$BUCKET"
           echo "Key=$KEY"
           echo "Region=$REGION"
       
-          # 5️⃣ Set output per GitHub Actions
+          # 3️⃣ Output GitHub Actions
           echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
           echo "key=$KEY" >> $GITHUB_OUTPUT
           echo "region=$REGION" >> $GITHUB_OUTPUT
-      
-                echo "region=$REGION" >> $GITHUB_OUTPUT
-            - name: Ensure S3 bucket exists
-              run: |
-                if ! aws s3api head-bucket --bucket "${{ steps.s3info.outputs.bucket }}" 2>/dev/null; then
-                  echo "Bucket does not exist. Creating..."
-                  aws s3api create-bucket \
-                    --bucket "${{ steps.s3info.outputs.bucket }}" \
-                    --region "${{ steps.s3info.outputs.region }}" \
-                    $( [ "${{ steps.s3info.outputs.region }}" != "us-east-1" ] && echo "--create-bucket-configuration LocationConstraint=${{ steps.s3info.outputs.region }}" )
-                else
-                  echo "Bucket already exists."
-                fi
 
-  
-      - name: Terraform Init
-        working-directory: ${{ inputs.working_directory }}
-        run: terraform init -input=false
-  
-      - name: Terraform Validate
-        working-directory: ${{ inputs.working_directory }}
-        run: terraform validate
-  
-      - name: Terraform Plan & Apply
-        working-directory: ${{ inputs.working_directory }}
-        run: |
-          # Logica di fallback: se eb_app_name è vuoto, usa il nome del repo
-          APP_NAME="${{ inputs.eb_app_name }}"
-          if [ -z "$APP_NAME" ]; then
-            APP_NAME="${{ github.event.repository.name }}"
-          fi
-          APP_NAME="$APP_NAME-app"
-          echo "Using EB Application Name: $APP_NAME-app ..."
-          
-          terraform import aws_elastic_beanstalk_application.$APP_NAME $APP_NAME || true
-          terraform plan -out=tfplan
-          terraform apply -auto-approve tfplan
 
   wait-for-ready-enviroment:
     needs: configure-elastic-beanstalk-enviroments
