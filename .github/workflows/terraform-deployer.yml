@@ -120,12 +120,7 @@ jobs:
           else
             echo "Bucket already exists."
           fi
-          LOCK_ID=$(terraform providers lock -json 2>/dev/null | jq -r '.lock_id // empty')
-
-          if [ -n "$LOCK_ID" ]; then
-            echo "Force unlocking state: $LOCK_ID"
-            terraform force-unlock -force "$LOCK_ID"
-          fi
+     
       - name: Terraform Init
         working-directory: ${{ inputs.working_directory }}
         run: terraform init -input=false -lock=false
