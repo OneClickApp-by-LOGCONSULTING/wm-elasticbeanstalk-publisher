@@ -49,14 +49,6 @@ on:
         description: 'Application profile (e.g., prod, dev)'
         type: string
         default: 'prod'
-      aws-s3-bucket-name: #AWS S3 bucket name where to store the WAR artifact file built by maven
-        required: true
-        type: string
-        default: ''
-      aws-s3-bucket-region: #
-        required: true
-        type: string
-        default: 'eu-south-1'
       log-group-prefix:
          required: false
          type: string  
