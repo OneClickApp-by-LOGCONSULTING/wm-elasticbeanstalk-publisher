@@ -87,7 +87,10 @@ jobs:
       - run: echo "The repository name is $(basename $GITHUB_REPOSITORY)"
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
-
+      # Check out the repository code
+      - name: Check out repository code
+        uses: actions/checkout@v3
+        
       - name: Map AWS role secret
         run: |
           echo "AWS_ROLE_TO_ASSUME=${AWS_ROLE_TO_ASSUME_FOR_DEPLOY}" >> $GITHUB_ENV
@@ -101,9 +104,7 @@ jobs:
           aws-region: ${{ inputs.aws-region }}
 
 
-      # Check out the repository code
-      - name: Check out repository code
-        uses: actions/checkout@v3
+  
 
       # List the contents of the profiles directory
       - run: |
