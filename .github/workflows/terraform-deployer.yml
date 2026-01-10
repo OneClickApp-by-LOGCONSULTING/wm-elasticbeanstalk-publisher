@@ -227,9 +227,9 @@ jobs:
       maven-version: ${{ inputs.maven_version }}
       java-version: ${{ inputs.java_version }}
       aws-region: ${{ inputs.aws_region }}
-      environment-name: ${{ inputs.eb_env_name }}
+      environment-name: ${{ inputs.eb_env_name }}-env
       wm-app-name: ${{ inputs.eb_app_name }}
-      beanstalk-application-name: ${{ inputs.eb_app_name }}
+      beanstalk-application-name: ${{ inputs.eb_app_name }}-app
       wm-profile: ${{ inputs.wm_profile }}
       aws-s3-bucket-name: ${{ inputs.s3_bucket_name }}
       aws-s3-bucket-region: ${{ inputs.aws_region }}
