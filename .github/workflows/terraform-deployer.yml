@@ -138,13 +138,18 @@ jobs:
 
       - name: Ensure S3 bucket exists for ebt-deployments artifacts
         run: |
-          if ! aws s3api head-bucket --bucket "${{ github.event.repository.name }}-ebt-deployments" 2>/dev/null; then
+          # Converto il nome della repository in minuscolo usando l'espansione di Bash ,,
+          REPO_NAME_LC="${{ github.event.repository.name }}"
+          BUCKET_NAME="${REPO_NAME_LC,,}-ebt-deployments"
+          
+          echo "Checking bucket: $BUCKET_NAME"
+
+          if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
             echo "Bucket does not exist. Creating..."
             aws s3api create-bucket \
-              --bucket "${{ github.event.repository.name }}-ebt-deployments" \
+              --bucket "$BUCKET_NAME" \
               --region "${{ inputs.aws_region }}" \
               --create-bucket-configuration LocationConstraint="${{ inputs.aws_region }}"
-             
           else
             echo "Bucket already exists."
           fi
