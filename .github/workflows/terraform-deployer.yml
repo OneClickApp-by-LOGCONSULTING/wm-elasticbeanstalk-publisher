@@ -88,7 +88,20 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
           aws-region: ${{ inputs.aws_region }}
-
+      
+      - name: Ensure S3 bucket exists for tettaform states
+        run: |
+          if ! aws s3api head-bucket --bucket "terraform-${{ github.event.repository.name }}-state" 2>/dev/null; then
+            echo "Bucket does not exist. Creating..."
+            aws s3api create-bucket \
+              --bucket "terraform-${{ github.event.repository.name }}-state" \
+              --region "${{ inputs.aws_region }}" \
+                 --create-bucket-configuration LocationConstraint="${{ inputs.aws_region }}"
+              
+          else
+            echo "Bucket already exists."
+          fi
+      
       - name: Extract S3 backend info from Terraform (safe)
         working-directory: ${{ inputs.working_directory }}
         id: s3info
@@ -123,18 +136,7 @@ jobs:
           echo "key=$KEY" >> $GITHUB_OUTPUT
           echo "region=$REGION" >> $GITHUB_OUTPUT
           
-      - name: Ensure S3 bucket exists for tettaform states
-        run: |
-          if ! aws s3api head-bucket --bucket "${{ steps.s3info.outputs.bucket }}" 2>/dev/null; then
-            echo "Bucket does not exist. Creating..."
-            aws s3api create-bucket \
-              --bucket "${{ steps.s3info.outputs.bucket }}" \
-              --region "${{ steps.s3info.outputs.region }}" \
-                 --create-bucket-configuration LocationConstraint="${{ steps.s3info.outputs.region }}"
-              
-          else
-            echo "Bucket already exists."
-          fi
+      
 
       - name: Ensure S3 bucket exists for ebt-deployments artifacts
         run: |
