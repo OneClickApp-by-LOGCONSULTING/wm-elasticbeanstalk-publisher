@@ -91,10 +91,11 @@ jobs:
       
       - name: Ensure S3 bucket exists for tettaform states
         run: |
-          if ! aws s3api head-bucket --bucket "terraform-${{ github.event.repository.name }}-state" 2>/dev/null; then
+          BUCKET_TO_CHECK="terraform-${{ github.event.repository.name }}-state"
+          if ! aws s3api head-bucket --bucket "${BUCKET_TO_CHECK,,}" 2>/dev/null; then
             echo "Bucket does not exist. Creating..."
             aws s3api create-bucket \
-              --bucket "terraform-${{ github.event.repository.name }}-state" \
+              --bucket "${BUCKET_TO_CHECK,,}" \
               --region "${{ inputs.aws_region }}" \
                  --create-bucket-configuration LocationConstraint="${{ inputs.aws_region }}"
               
