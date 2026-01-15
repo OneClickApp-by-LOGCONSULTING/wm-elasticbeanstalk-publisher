@@ -165,9 +165,9 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
         run: |
           terraform import aws_iam_role.eb_ec2_role aws-elasticbeanstalk-ec2-role
-          terraform import aws_wafv2_regex_pattern_set.blocked_http_methods
-          terraform import aws_wafv2_regex_pattern_set.valid_http_methods
-          terraform import aws_wafv2_regex_pattern_set.path_services
+          terraform import aws_wafv2_regex_pattern_set.blocked_http_methods http-methods-blocked
+          terraform import aws_wafv2_regex_pattern_set.valid_http_methods allowed-http-methods
+          terraform import aws_wafv2_regex_pattern_set.path_services allowed-path-prefix-services
 
 
   
