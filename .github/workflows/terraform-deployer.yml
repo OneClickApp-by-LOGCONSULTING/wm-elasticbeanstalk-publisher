@@ -159,7 +159,17 @@ jobs:
      
       - name: Terraform Init
         working-directory: ${{ inputs.working_directory }}
-        run: terraform init -input=false -lock=false
+        run: terraform init -input=false -lock=false -reconfigure
+
+      - name: Terraform import common resources
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          terraform import aws_iam_role.eb_ec2_role aws-elasticbeanstalk-ec2-role
+          terraform import aws_wafv2_regex_pattern_set.blocked_http_methods
+          terraform import aws_wafv2_regex_pattern_set.valid_http_methods
+          terraform import aws_wafv2_regex_pattern_set.path_services
+
+
   
       - name: Terraform Validate
         working-directory: ${{ inputs.working_directory }}
