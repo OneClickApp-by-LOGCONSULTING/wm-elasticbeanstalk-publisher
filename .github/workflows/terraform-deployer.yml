@@ -143,7 +143,7 @@ jobs:
         run: |
           # Converto il nome della repository in minuscolo usando l'espansione di Bash ,,
           REPO_NAME_LC="${{ github.event.repository.name }}"
-          BUCKET_NAME="${REPO_NAME_LC,,}-ebt-deployments"
+          BUCKET_NAME="${REPO_NAME_LC,,}-ebt-deployments" 
           
           echo "Checking bucket: $BUCKET_NAME"
 
