@@ -7,15 +7,15 @@ on:
       node-version:
         required: false
         type: string
-        default: '22.11.0'  # Default Node.js version
+        default: '22.18.0'  # Default Node.js version
       npm-version:
         required: false
         type: string
-        default: '10.9.0'
+        default: '10.9.3'
       maven-version:
         required: false
         type: string
-        default: '3.9.12'  # Default Maven Version
+        default: '3.9.11'  # Default Maven Version
       java-version:
         required: false
         type: string
