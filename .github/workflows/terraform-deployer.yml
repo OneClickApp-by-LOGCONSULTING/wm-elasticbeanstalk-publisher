@@ -60,6 +60,15 @@ on:
          required: false
          type: string  
          default: ''
+      force-lowercase-wm-app-name: # Force pipeline to change the WAR file name to deploy to lowercase letter only.
+        required: false
+        type: boolean
+        default: false
+      force-root-wm-app-name: # force Wavemaker application name as ROOT.war, it places Tomcat to have WM-APP in root context.
+        required: false
+        type: boolean
+        default: false  
+      
 
     secrets:
       AWS_ROLE_TO_ASSUME_FOR_DEPLOY:
@@ -288,6 +297,6 @@ jobs:
       wm-profile: ${{ inputs.wm_profile }}
       aws-s3-bucket-name: ${{ needs.prepare-bucket-name.outputs.s3_bucket_name }}
       aws-s3-bucket-region: ${{ inputs.aws_region }}
-      force-lowercase-wm-app-name: false
+      force-lowercase-wm-app-name: ${{ inputs.force-lowercase-wm-app-name }}
       log-group-prefix: ${{ github.event.repository.name }}
-      force-root-wm-app-name: true
+      force-root-wm-app-name: ${{ inputs.force-root-wm-app-name }}
