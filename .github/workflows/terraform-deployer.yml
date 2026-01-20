@@ -262,12 +262,14 @@ jobs:
     steps:
       - id: out
         run: |
-          echo "bucket=${GITHUB_REPOSITORY##*/,,}-ebt-deployments" >> $GITHUB_OUTPUT
+          REPO_NAME_LC="${{ github.event.repository.name }}"
+          echo "bucket=${REPO_NAME_LC,,}-ebt-deployments" >> $GITHUB_OUTPUT
           
   call-build-and-deploy:
     needs: 
       - wait-for-ready-enviroment
       - configure-elastic-beanstalk-enviroments
+      - prepare-bucket-name
     permissions:
       id-token: write
       contents: read
