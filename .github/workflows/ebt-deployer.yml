@@ -280,8 +280,9 @@ jobs:
             cp $WM_APP_NAME.war ROOT.war
             zip -r ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip ROOT.war .ebextensions ${{ inputs.loader-io-token }}.txt
           fi       
-         
+
+          S3_BUCKET_NAME="${{ inputs.aws-s3-bucket-name }}"
           unzip -l ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip
-          aws s3 cp ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip s3://${{ inputs.aws-s3-bucket-name }}/ --region ${{ inputs.aws-s3-bucket-region }}
-          aws elasticbeanstalk create-application-version --application-name ${{ inputs.beanstalk-application-name }} --version-label ${{ inputs.wm-app-name }}-$TIME --source-bundle S3Bucket="${{ inputs.aws-s3-bucket-name }}",S3Key="${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip" --no-auto-create-application --region ${{ inputs.aws-region }}
+          aws s3 cp ${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip s3://${S3_BUCKET_NAME,,}/ --region ${{ inputs.aws-s3-bucket-region }}
+          aws elasticbeanstalk create-application-version --application-name ${{ inputs.beanstalk-application-name }} --version-label ${{ inputs.wm-app-name }}-$TIME --source-bundle S3Bucket="${S3_BUCKET_NAME,,}",S3Key="${{ inputs.wm-app-name }}-ebt_deployer-$TIME.zip" --no-auto-create-application --region ${{ inputs.aws-region }}
           aws elasticbeanstalk update-environment --environment-name ${{ inputs.environment-name }} --version-label ${{ inputs.wm-app-name }}-$TIME --region ${{ inputs.aws-region }}
