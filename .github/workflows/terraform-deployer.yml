@@ -255,7 +255,15 @@ jobs:
             sleep $sleep_time
           done
           exit 1
-
+  prepare-bucket-name:
+    runs-on: ubuntu-latest
+    outputs:
+      s3_bucket_name: ${{ steps.out.outputs.bucket }}
+    steps:
+      - id: out
+        run: |
+          echo "bucket=${GITHUB_REPOSITORY##*/,,}-ebt-deployments" >> $GITHUB_OUTPUT
+          
   call-build-and-deploy:
     needs: 
       - wait-for-ready-enviroment
@@ -276,7 +284,7 @@ jobs:
       wm-app-name: ${{ github.event.repository.name }}
       beanstalk-application-name: ${{ needs.configure-elastic-beanstalk-enviroments.outputs.eb_app_name }}
       wm-profile: ${{ inputs.wm_profile }}
-      aws-s3-bucket-name: ${{ github.event.repository.name }}-ebt-deployments
+      aws-s3-bucket-name: ${{ needs.prepare-bucket-name.outputs.s3_bucket_name }}
       aws-s3-bucket-region: ${{ inputs.aws_region }}
       force-lowercase-wm-app-name: false
       log-group-prefix: ${{ github.event.repository.name }}
