@@ -40,7 +40,7 @@ on:
       maven_version:
         description: 'Apache Maven version'
         type: string
-        default: '3.9.11'
+        default: '3.9.12'
       s3_bucket_name:
         description: 'S3 bucket name for uploading deployment artifacts'
         type: string
