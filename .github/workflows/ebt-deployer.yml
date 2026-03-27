@@ -177,10 +177,10 @@ jobs:
         run: mvn clean install -P${{ inputs.wm-profile }} -X -e
 
       # Download a sample WAR file (for testing purposes)
-      - name: wget a sample WAR file
-        uses: wei/wget@v1
-        with:
-          args: -O ROOT.war ${{ inputs.root-war-url != '' && inputs.root-war-url || 'https://tomcat.apache.org/tomcat-10.0-doc/appdev/sample/sample.war' }}
+      - name: Download ROOT.war
+        run: |
+          URL="${{ inputs.root-war-url != '' && inputs.root-war-url || 'https://tomcat.apache.org/tomcat-10.0-doc/appdev/sample/sample.war' }}"
+          curl -L -o ROOT.war "$URL"
 
       # Get current time for naming and versioning purposes
       - name: Get the current time
