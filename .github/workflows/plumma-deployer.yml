@@ -294,9 +294,9 @@ jobs:
       environment-name: ${{ needs.wait-for-ready-enviroment.outputs.eb_env_name }}
       wm-app-name: ${{ github.event.repository.name }}
       beanstalk-application-name: ${{ needs.configure-elastic-beanstalk-enviroments.outputs.eb_app_name }}
-      wm-profile: ${{ inputs.wm_profile }}
+      wm-profile: ${{ inputs.maven_profile }}
       aws-s3-bucket-name: ${{ needs.prepare-bucket-name.outputs.s3_bucket_name }}
       aws-s3-bucket-region: ${{ inputs.aws_region }}
-      force-lowercase-wm-app-name: ${{ inputs.force-lowercase-wm-app-name }}
+      force-lowercase-wm-app-name: ${{ inputs.force-lowercase-app-name }}
       log-group-prefix: ${{ github.event.repository.name }}
-      force-root-wm-app-name: ${{ inputs.force-root-wm-app-name }}
+      force-root-wm-app-name: ${{ inputs.force-root-app-name }}
