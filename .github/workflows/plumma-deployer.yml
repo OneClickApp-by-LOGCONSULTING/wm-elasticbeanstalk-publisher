@@ -93,7 +93,7 @@ jobs:
           terraform_version: ${{ inputs.terraform_version }}
   
       - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
           aws-region: ${{ inputs.aws_region }}
