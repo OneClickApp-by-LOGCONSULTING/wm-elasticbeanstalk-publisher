@@ -76,8 +76,36 @@ on:
         required: true
 
 jobs:
+
+  # ---------------------------------------------------------------------
+  # Risolve l'Account ID AWS una sola volta: viene usato per costruire nomi
+  # di bucket univoci a livello globale ma deterministici per repo+account,
+  # cosi' che la prima volta il nome sia "libero" e vengano creati, mentre
+  # le volte successive lo stesso nome esiste gia' e viene semplicemente
+  # riutilizzato (mai ricreato).
+  # ---------------------------------------------------------------------
+  resolve-account-id:
+    runs-on: ubuntu-latest
+    outputs:
+      account_id: ${{ steps.whoami.outputs.account_id }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Get AWS Account ID
+        id: whoami
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "account_id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
+
   configure-elastic-beanstalk-enviroments:
-      
+      needs: resolve-account-id
       runs-on: ubuntu-latest
       outputs:
         eb_app_name: ${{ steps.configure-app.outputs.eb_app_name }}
@@ -97,20 +125,48 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
           aws-region: ${{ inputs.aws_region }}
-      
-      - name: Ensure S3 bucket exists for tettaform states
+
+      - name: Ensure S3 bucket exists for terraform states (create once, reuse after)
+        env:
+          ACCOUNT_ID: ${{ needs.resolve-account-id.outputs.account_id }}
         run: |
-          BUCKET_TO_CHECK="terraform-${{ github.event.repository.name }}-state"
-          if ! aws s3api head-bucket --bucket "${BUCKET_TO_CHECK,,}" 2>/dev/null; then
-            echo "Bucket does not exist. Creating..."
-            aws s3api create-bucket \
-              --bucket "${BUCKET_TO_CHECK,,}" \
+          set -e
+          REPO_NAME_LC="${{ github.event.repository.name }}"
+          REPO_NAME_LC="${REPO_NAME_LC,,}"
+          BUCKET_NAME="terraform-${REPO_NAME_LC}-state-${ACCOUNT_ID}"
+          echo "Terraform state bucket name: $BUCKET_NAME"
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_ENV
+
+          max_retries=10
+          sleep_time=15
+          for i in $(seq 1 $max_retries); do
+            OUTPUT=$(aws s3api create-bucket \
+              --bucket "$BUCKET_NAME" \
               --region "${{ inputs.aws_region }}" \
-                 --create-bucket-configuration LocationConstraint="${{ inputs.aws_region }}"
-              
-          else
-            echo "Bucket already exists."
-          fi
+              --create-bucket-configuration LocationConstraint="${{ inputs.aws_region }}" 2>&1) && {
+                echo "Bucket $BUCKET_NAME created."
+                break
+              }
+
+            if echo "$OUTPUT" | grep -q "BucketAlreadyOwnedByYou"; then
+              echo "Bucket $BUCKET_NAME already exists and belongs to this account. Reusing it."
+              break
+            elif echo "$OUTPUT" | grep -q "OperationAborted"; then
+              echo "Conflicting operation in progress (bucket likely just deleted). Retry $i/$max_retries in ${sleep_time}s..."
+              sleep $sleep_time
+            elif echo "$OUTPUT" | grep -q "BucketAlreadyExists"; then
+              echo "ERROR: bucket name $BUCKET_NAME is taken by another AWS account. This should not happen since the name includes the account ID." >&2
+              exit 1
+            else
+              echo "$OUTPUT" >&2
+              exit 1
+            fi
+
+            if [ "$i" -eq "$max_retries" ]; then
+              echo "ERROR: could not create/verify bucket $BUCKET_NAME after $max_retries attempts." >&2
+              exit 1
+            fi
+          done
       
       - name: Extract S3 backend info from Terraform (safe)
         working-directory: ${{ inputs.working_directory }}
@@ -148,23 +204,46 @@ jobs:
           
       
 
-      - name: Ensure S3 bucket exists for ebt-deployments artifacts
+      - name: Ensure S3 bucket exists for ebt-deployments artifacts (create once, reuse after)
+        env:
+          ACCOUNT_ID: ${{ needs.resolve-account-id.outputs.account_id }}
         run: |
-          # Converto il nome della repository in minuscolo usando l'espansione di Bash ,,
+          set -e
           REPO_NAME_LC="${{ github.event.repository.name }}"
-          BUCKET_NAME="${REPO_NAME_LC,,}-ebt-deployments" 
-          
-          echo "Checking bucket: $BUCKET_NAME"
+          REPO_NAME_LC="${REPO_NAME_LC,,}"
+          BUCKET_NAME="${REPO_NAME_LC}-ebt-deployments-${ACCOUNT_ID}"
+          echo "EBT deployments bucket name: $BUCKET_NAME"
 
-          if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
-            echo "Bucket does not exist. Creating..."
-            aws s3api create-bucket \
+          max_retries=10
+          sleep_time=15
+          for i in $(seq 1 $max_retries); do
+            OUTPUT=$(aws s3api create-bucket \
               --bucket "$BUCKET_NAME" \
               --region "${{ inputs.aws_region }}" \
-              --create-bucket-configuration LocationConstraint="${{ inputs.aws_region }}"
-          else
-            echo "Bucket already exists."
-          fi
+              --create-bucket-configuration LocationConstraint="${{ inputs.aws_region }}" 2>&1) && {
+                echo "Bucket $BUCKET_NAME created."
+                break
+              }
+
+            if echo "$OUTPUT" | grep -q "BucketAlreadyOwnedByYou"; then
+              echo "Bucket $BUCKET_NAME already exists and belongs to this account. Reusing it."
+              break
+            elif echo "$OUTPUT" | grep -q "OperationAborted"; then
+              echo "Conflicting operation in progress (bucket likely just deleted). Retry $i/$max_retries in ${sleep_time}s..."
+              sleep $sleep_time
+            elif echo "$OUTPUT" | grep -q "BucketAlreadyExists"; then
+              echo "ERROR: bucket name $BUCKET_NAME is taken by another AWS account. This should not happen since the name includes the account ID." >&2
+              exit 1
+            else
+              echo "$OUTPUT" >&2
+              exit 1
+            fi
+
+            if [ "$i" -eq "$max_retries" ]; then
+              echo "ERROR: could not create/verify bucket $BUCKET_NAME after $max_retries attempts." >&2
+              exit 1
+            fi
+          done
      
       - name: Terraform Init
         working-directory: ${{ inputs.working_directory }}
@@ -264,15 +343,20 @@ jobs:
             sleep $sleep_time
           done
           exit 1
+
   prepare-bucket-name:
+    needs: resolve-account-id
     runs-on: ubuntu-latest
     outputs:
       s3_bucket_name: ${{ steps.out.outputs.bucket }}
     steps:
       - id: out
+        env:
+          ACCOUNT_ID: ${{ needs.resolve-account-id.outputs.account_id }}
         run: |
           REPO_NAME_LC="${{ github.event.repository.name }}"
-          echo "bucket=${REPO_NAME_LC,,}-ebt-deployments" >> $GITHUB_OUTPUT
+          REPO_NAME_LC="${REPO_NAME_LC,,}"
+          echo "bucket=${REPO_NAME_LC}-ebt-deployments-${ACCOUNT_ID}" >> $GITHUB_OUTPUT
           
   call-build-and-deploy:
     needs: 
