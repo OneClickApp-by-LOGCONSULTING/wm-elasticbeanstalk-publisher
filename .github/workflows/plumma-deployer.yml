@@ -7,45 +7,61 @@ on:
         type: string
         default: '1.11.3'
       aws_region:
-        description: 'AWS Region for deployment and S3 resources (must match VPC/subnets/certificate)'
+        description: 'AWS Region (deve combaciare con VPC/subnets/certificate)'
         type: string
         default: 'eu-west-1'
       working_directory:
         type: string
         default: 'src/main/webapp/resources/IaaC'
 
-      # --- Nomi (vuoti = derivati dal nome repo) ---
+      # --- Nomi (vuoti = nome del repo) ---
       eb_env_name:
-        description: 'EB environment name. Vuoto => nome del repo. Passare il nome ESATTO solo per casi particolari.'
+        description: 'EB environment name. Vuoto => nome del repo.'
         type: string
         default: ''
         required: false
       eb_app_name:
-        description: 'EB application name. Vuoto => nome del repo (coincide con l environment).'
+        description: 'EB application name. Vuoto => nome del repo.'
         type: string
         default: ''
         required: false
       project_tag:
-        description: 'Tag PROJECT e prefisso WAF. Vuoto => nome repo.'
+        description: 'Tag PROJECT e prefisso WAF/ruolo. Vuoto => nome repo.'
         type: string
         default: ''
         required: false
 
-      # --- Parametri account-specifici (OBBLIGATORI) ---
+      # --- Account-specifici (OBBLIGATORI) ---
       vpc_id:
-        description: 'VPC ID in cui creare l ambiente EB'
         type: string
         required: true
       subnets:
-        description: 'Subnet separate da virgola (istanze + ALB)'
         type: string
         required: true
       ssl_certificate_arn:
-        description: 'ARN certificato ACM (stessa regione) per il listener 443'
         type: string
         required: true
 
-      # --- Knobs opzionali (hanno un default) ---
+      # --- Sicurezza apply ---
+      allow_destroy:
+        description: 'Se false (default) il deploy si ferma quando il plan contiene destroy/replace.'
+        type: boolean
+        default: false
+      plan_only:
+        description: 'Se true esegue solo il plan (nessun apply).'
+        type: boolean
+        default: false
+
+      # --- Piattaforma (Java 21 / Tomcat 10 standard) ---
+      java_version:
+        type: string
+        default: '21'
+      tomcat_family:
+        description: 'Famiglia Tomcat da cercare nel solution stack.'
+        type: string
+        default: 'Tomcat 10'
+
+      # --- Knobs opzionali ---
       instance_type:
         type: string
         default: 't4g.small'
@@ -69,9 +85,6 @@ on:
       npm_version:
         type: string
         default: '10.9.3'
-      java_version:
-        type: string
-        default: '21'
       maven_version:
         type: string
         default: '3.9.12'
@@ -120,7 +133,7 @@ jobs:
           aws-region: ${{ inputs.aws_region }}
       - name: Get AWS Account ID
         id: whoami
-        run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_OUTPUT
+        run: echo "account_id=$(aws sts get-caller-identity --region ${{ inputs.aws_region }} --query Account --output text)" >> $GITHUB_OUTPUT
 
   configure-elastic-beanstalk-enviroments:
       needs: resolve-account-id
@@ -163,7 +176,6 @@ jobs:
             [ "$i" -eq 10 ] && { echo "ERROR: bucket not ready" >&2; exit 1; }
           done
 
-      # --- Risolve nomi/regione e li espone come TF_VAR_* per tutti gli step terraform ---
       - name: Resolve Terraform variables
         id: resolve
         env:
@@ -173,17 +185,17 @@ jobs:
         run: |
           set -e
           REPO="${{ github.event.repository.name }}"
-          # Modello "app semplice": application, environment e project_tag
-          # coincidono con il nome del repo, salvo override espliciti.
           APP="${IN_APP:-$REPO}"
           ENVN="${IN_ENV:-$REPO}"
           PROJECT="${IN_PROJECT:-$REPO}"
+          EC2_ROLE="${PROJECT}-eb-ec2-role"
 
           {
             echo "TF_VAR_aws_region=${{ inputs.aws_region }}"
             echo "TF_VAR_application_name=$APP"
             echo "TF_VAR_environment_name=$ENVN"
             echo "TF_VAR_project_tag=$PROJECT"
+            echo "TF_VAR_ec2_role_name=$EC2_ROLE"
             echo "TF_VAR_vpc_id=${{ inputs.vpc_id }}"
             echo "TF_VAR_subnets=${{ inputs.subnets }}"
             echo "TF_VAR_ssl_certificate_arn=${{ inputs.ssl_certificate_arn }}"
@@ -195,13 +207,13 @@ jobs:
             echo "RESOLVED_APP_NAME=$APP"
             echo "RESOLVED_ENV_NAME=$ENVN"
             echo "RESOLVED_PROJECT=$PROJECT"
+            echo "RESOLVED_EC2_ROLE=$EC2_ROLE"
           } >> "$GITHUB_ENV"
 
           echo "app_name=$APP" >> "$GITHUB_OUTPUT"
           echo "env_name=$ENVN" >> "$GITHUB_OUTPUT"
-          echo "Resolved: app=$APP env=$ENVN project=$PROJECT region=${{ inputs.aws_region }}"
+          echo "Resolved: app=$APP env=$ENVN project=$PROJECT ec2_role=$EC2_ROLE region=${{ inputs.aws_region }}"
 
-      # --- Rende dinamico SOLO bucket+region del backend S3 in main.tf (il backend non supporta variabili) ---
       - name: Make Terraform S3 backend dynamic in main.tf
         working-directory: ${{ inputs.working_directory }}
         env:
@@ -219,15 +231,16 @@ jobs:
           }" main.tf
           grep -n -A6 -E 'backend[[:space:]]+"s3"' main.tf || true
 
-      # --- Risolve il solution stack piu' recente e lo passa via TF_VAR ---
       - name: Resolve Elastic Beanstalk solution stack
         run: |
           set -e
+          FILTER_TOMCAT="${{ inputs.tomcat_family }}"
+          FILTER_CORRETTO="Corretto ${{ inputs.java_version }}"
           STACK=$(aws elasticbeanstalk list-available-solution-stacks --region "${{ inputs.aws_region }}" \
-            --query "SolutionStacks[?contains(@, 'Amazon Linux 2023') && contains(@, 'Tomcat 10') && contains(@, 'Corretto 21')] | [0]" \
+            --query "SolutionStacks[?contains(@, 'Amazon Linux 2023') && contains(@, '$FILTER_TOMCAT') && contains(@, '$FILTER_CORRETTO')] | [0]" \
             --output text)
           if [ -z "$STACK" ] || [ "$STACK" = "None" ]; then
-            echo "ERROR: nessun solution stack AL2023/Tomcat 10/Corretto 21 in ${{ inputs.aws_region }}" >&2
+            echo "ERROR: nessun solution stack AL2023 / $FILTER_TOMCAT / $FILTER_CORRETTO in ${{ inputs.aws_region }}" >&2
             aws elasticbeanstalk list-available-solution-stacks --region "${{ inputs.aws_region }}" \
               --query "SolutionStacks[?contains(@, 'Tomcat')]" --output table >&2 || true
             exit 1
@@ -241,7 +254,7 @@ jobs:
         run: |
           set -e
           [ -f main.tf ] || { echo "Errore: main.tf non trovato!"; exit 1; }
-          terraform init -input=false -reconfigure -lock=false
+          terraform init -input=false -reconfigure
           STATE_FILE=".terraform/terraform.tfstate"
           [ -f "$STATE_FILE" ] || { echo "Errore: backend state non trovato"; exit 1; }
           echo "bucket=$(jq -r '.backend.config.bucket' "$STATE_FILE")" >> $GITHUB_OUTPUT
@@ -268,59 +281,105 @@ jobs:
 
       - name: Terraform Init
         working-directory: ${{ inputs.working_directory }}
-        run: terraform init -input=false -lock=false -reconfigure
+        run: terraform init -input=false -reconfigure
 
-      # --- Import self-healing: ricostruisce lo state se e' stato perso ---
-      - name: Terraform import existing resources (self-heal state)
+      # --- Import self-healing + anti-rename + migrazione IAM per-progetto ---
+      - name: Terraform import & reconcile state
         working-directory: ${{ inputs.working_directory }}
         env:
           REGION: ${{ inputs.aws_region }}
         run: |
           set -uo pipefail
 
-          terraform import aws_iam_role.eb_ec2_role aws-elasticbeanstalk-ec2-role || true
-          terraform import aws_iam_instance_profile.eb_ec2_instance_profile aws-elasticbeanstalk-ec2-role || true
-          terraform import aws_iam_role_policy.eb_ec2_cloudwatch_logs "aws-elasticbeanstalk-ec2-role:EBCloudWatchLogsPolicy" || true
-          terraform import aws_iam_role_policy_attachment.eb_ec2_role_attach "aws-elasticbeanstalk-ec2-role/arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier" || true
-          terraform import aws_iam_role_policy_attachment.eb_ec2_worker_attach "aws-elasticbeanstalk-ec2-role/arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier" || true
+          # id corrente di una risorsa nello state (vuoto se assente)
+          state_id() { terraform state show "$1" 2>/dev/null | awk -F'"' '/^[[:space:]]*id[[:space:]]*=/{print $2; exit}'; }
+          in_state()  { terraform state list 2>/dev/null | grep -qx "$1"; }
 
+          # rimuove dallo state (senza distruggere in AWS) se l'id non combacia con quello desiderato
+          rm_if_mismatch() {
+            local addr="$1" desired="$2"
+            if in_state "$addr"; then
+              local cur; cur=$(state_id "$addr")
+              if [ "$cur" != "$desired" ]; then
+                echo "Reconcile $addr: '$cur' != '$desired' -> state rm (non distrutto in AWS)"
+                terraform state rm "$addr" || true
+              fi
+            fi
+          }
+
+          # ---- Migrazione IAM: da ruolo condiviso a ruolo per-progetto ----
+          # Se lo state ha il ruolo con un nome diverso da quello desiderato,
+          # rimuove TUTTI i 5 oggetti IAM dallo state (NON li distrugge) cosi'
+          # il plan crea quelli per-progetto senza toccare il ruolo condiviso.
+          if in_state aws_iam_role.eb_ec2_role; then
+            CUR_ROLE=$(state_id aws_iam_role.eb_ec2_role)
+            if [ "$CUR_ROLE" != "$RESOLVED_EC2_ROLE" ]; then
+              echo "Migrazione IAM: '$CUR_ROLE' -> '$RESOLVED_EC2_ROLE'"
+              for a in aws_iam_role.eb_ec2_role aws_iam_instance_profile.eb_ec2_instance_profile \
+                       aws_iam_role_policy.eb_ec2_cloudwatch_logs \
+                       aws_iam_role_policy_attachment.eb_ec2_role_attach \
+                       aws_iam_role_policy_attachment.eb_ec2_worker_attach; do
+                terraform state rm "$a" || true
+              done
+            fi
+          fi
+          # Import per-progetto SOLO se il ruolo esiste gia' (run successivi); altrimenti verra' creato
+          if aws iam get-role --role-name "$RESOLVED_EC2_ROLE" --region "$REGION" >/dev/null 2>&1; then
+            terraform import aws_iam_role.eb_ec2_role "$RESOLVED_EC2_ROLE" || true
+            terraform import aws_iam_instance_profile.eb_ec2_instance_profile "$RESOLVED_EC2_ROLE" || true
+            terraform import aws_iam_role_policy.eb_ec2_cloudwatch_logs "$RESOLVED_EC2_ROLE:EBCloudWatchLogsPolicy" || true
+            terraform import aws_iam_role_policy_attachment.eb_ec2_role_attach "$RESOLVED_EC2_ROLE/arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier" || true
+            terraform import aws_iam_role_policy_attachment.eb_ec2_worker_attach "$RESOLVED_EC2_ROLE/arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier" || true
+          else
+            echo "IAM role $RESOLVED_EC2_ROLE assente: verra' creato dal plan."
+          fi
+
+          # ---- WAF regex pattern sets ----
           import_regex_set() {
             local tfaddr="$1" name="$2" id
             id=$(aws wafv2 list-regex-pattern-sets --scope REGIONAL --region "$REGION" \
                   --query "RegexPatternSets[?Name=='$name'].Id | [0]" --output text)
             if [ -n "$id" ] && [ "$id" != "None" ]; then
-              terraform import "$tfaddr" "$id/$name/REGIONAL" || true
+              rm_if_mismatch "$tfaddr" "$id"
+              in_state "$tfaddr" || terraform import "$tfaddr" "$id/$name/REGIONAL" || true
             else echo "Regex set $name assente: skip."; fi
           }
           import_regex_set aws_wafv2_regex_pattern_set.valid_http_methods   allowed-http-methods
           import_regex_set aws_wafv2_regex_pattern_set.blocked_http_methods http-methods-blocked
           import_regex_set aws_wafv2_regex_pattern_set.path_services        allowed-path-prefix-services
 
+          # ---- WAF Web ACL ----
           ACL_NAME="eb-waf-${RESOLVED_PROJECT}"
           ACL_ID=$(aws wafv2 list-web-acls --scope REGIONAL --region "$REGION" \
                     --query "WebACLs[?Name=='$ACL_NAME'].Id | [0]" --output text)
           if [ -n "$ACL_ID" ] && [ "$ACL_ID" != "None" ]; then
-            terraform import aws_wafv2_web_acl.waf "$ACL_ID/$ACL_NAME/REGIONAL" || true
+            rm_if_mismatch aws_wafv2_web_acl.waf "$ACL_ID"
+            in_state aws_wafv2_web_acl.waf || terraform import aws_wafv2_web_acl.waf "$ACL_ID/$ACL_NAME/REGIONAL" || true
           else echo "Web ACL $ACL_NAME assente: skip."; fi
 
+          # ---- EB Application (anti-rename) ----
           if aws elasticbeanstalk describe-applications --application-names "$RESOLVED_APP_NAME" --region "$REGION" \
-               --query "Applications[0].ApplicationName" --output text 2>/dev/null | grep -q "$RESOLVED_APP_NAME"; then
-            terraform import aws_elastic_beanstalk_application.app "$RESOLVED_APP_NAME" || true
-          else echo "EB application $RESOLVED_APP_NAME assente: skip."; fi
+               --query "Applications[0].ApplicationName" --output text 2>/dev/null | grep -qx "$RESOLVED_APP_NAME"; then
+            rm_if_mismatch aws_elastic_beanstalk_application.app "$RESOLVED_APP_NAME"
+            in_state aws_elastic_beanstalk_application.app || terraform import aws_elastic_beanstalk_application.app "$RESOLVED_APP_NAME" || true
+          else echo "EB application $RESOLVED_APP_NAME assente: verra' creata."; fi
 
+          # ---- EB Environment (anti-rename, id = e-xxxx) ----
           ENV_ID=$(aws elasticbeanstalk describe-environments --environment-names "$RESOLVED_ENV_NAME" --region "$REGION" \
                     --query "Environments[?Status!='Terminated'].EnvironmentId | [0]" --output text)
           if [ -n "$ENV_ID" ] && [ "$ENV_ID" != "None" ]; then
-            terraform import aws_elastic_beanstalk_environment.env "$ENV_ID" || true
-          else echo "EB environment $RESOLVED_ENV_NAME assente: skip (verra' creato)."; fi
+            rm_if_mismatch aws_elastic_beanstalk_environment.env "$ENV_ID"
+            in_state aws_elastic_beanstalk_environment.env || terraform import aws_elastic_beanstalk_environment.env "$ENV_ID" || true
+          else echo "EB environment $RESOLVED_ENV_NAME assente: verra' creato."; fi
 
+          # ---- WAF association ----
           if [ -n "${ACL_ID:-}" ] && [ "$ACL_ID" != "None" ] && [ -n "${ENV_ID:-}" ] && [ "$ENV_ID" != "None" ]; then
             ACL_ARN=$(aws wafv2 list-web-acls --scope REGIONAL --region "$REGION" \
                        --query "WebACLs[?Name=='$ACL_NAME'].ARN | [0]" --output text)
             LB_ARN=$(aws elasticbeanstalk describe-environment-resources --environment-name "$RESOLVED_ENV_NAME" --region "$REGION" \
                        --query "EnvironmentResources.LoadBalancers[0].Name" --output text)
             if [ -n "$ACL_ARN" ] && [ "$ACL_ARN" != "None" ] && [ -n "$LB_ARN" ] && [ "$LB_ARN" != "None" ]; then
-              terraform import aws_wafv2_web_acl_association.waf "${ACL_ARN},${LB_ARN}" || true
+              in_state aws_wafv2_web_acl_association.waf || terraform import aws_wafv2_web_acl_association.waf "${ACL_ARN},${LB_ARN}" || true
             fi
           fi
 
@@ -328,15 +387,42 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
         run: terraform validate
 
-      - name: Terraform Plan & Apply
+      - name: Terraform Plan
         working-directory: ${{ inputs.working_directory }}
         run: |
-          echo "Deploying app=$RESOLVED_APP_NAME env=$RESOLVED_ENV_NAME"
-          terraform plan -lock=false -out=tfplan
-          terraform apply -lock=false -auto-approve tfplan
+          echo "Planning app=$RESOLVED_APP_NAME env=$RESOLVED_ENV_NAME"
+          terraform plan -input=false -out=tfplan
+          terraform show -json tfplan > tfplan.json
+
+      - name: Guard against destructive changes
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          ALLOW_DESTROY: ${{ inputs.allow_destroy }}
+        run: |
+          set -e
+          DESTRUCTIVE=$(jq -r '.resource_changes[]? | select(.change.actions | index("delete")) | "\(.address): \(.change.actions | join("+"))"' tfplan.json)
+          if [ -n "$DESTRUCTIVE" ]; then
+            echo "::warning title=Azioni distruttive rilevate::destroy/replace nel plan"
+            echo "----- DESTROY / REPLACE -----"
+            echo "$DESTRUCTIVE"
+            echo "-----------------------------"
+            if [ "$ALLOW_DESTROY" != "true" ]; then
+              echo "::error::Apply BLOCCATO: il plan distruggerebbe/ricreerebbe risorse. Verifica sopra. Rilancia con allow_destroy=true SOLO se intenzionale."
+              exit 1
+            fi
+            echo "allow_destroy=true: procedo comunque."
+          else
+            echo "Nessuna azione distruttiva: OK."
+          fi
+
+      - name: Terraform Apply
+        if: ${{ inputs.plan_only == false }}
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform apply -input=false tfplan
 
   wait-for-ready-enviroment:
     needs: configure-elastic-beanstalk-enviroments
+    if: ${{ inputs.plan_only == false }}
     runs-on: ubuntu-latest
     outputs:
       eb_env_name: ${{ needs.configure-elastic-beanstalk-enviroments.outputs.eb_env_name }}
@@ -353,16 +439,17 @@ jobs:
     - name: Wait for Elastic Beanstalk environment to be ready
       env:
         ENV_NAME: ${{ needs.configure-elastic-beanstalk-enviroments.outputs.eb_env_name }}
+        REGION: ${{ inputs.aws_region }}
       run: |
           echo "Waiting for EB environment: $ENV_NAME"
-          version_label=$(aws elasticbeanstalk describe-environments --environment-names "$ENV_NAME" \
+          version_label=$(aws elasticbeanstalk describe-environments --environment-names "$ENV_NAME" --region "$REGION" \
             --query "Environments[0].VersionLabel" --output text)
           if [[ "$version_label" == "Sample Application" || "$version_label" == "None" ]]; then
             echo "Sample app / nessuna versione: skip wait."; exit 0
           fi
           for i in $(seq 1 30); do
-            status=$(aws elasticbeanstalk describe-environments --environment-names "$ENV_NAME" --query "Environments[0].Status" --output text)
-            health=$(aws elasticbeanstalk describe-environments --environment-names "$ENV_NAME" --query "Environments[0].Health" --output text)
+            status=$(aws elasticbeanstalk describe-environments --environment-names "$ENV_NAME" --region "$REGION" --query "Environments[0].Status" --output text)
+            health=$(aws elasticbeanstalk describe-environments --environment-names "$ENV_NAME" --region "$REGION" --query "Environments[0].Health" --output text)
             echo "Attempt $i: Status=$status Health=$health"
             if [ "$status" = "Ready" ] && { [ "$health" = "Green" ] || [ "$health" = "Ok" ]; }; then echo "Ready."; exit 0; fi
             sleep 10
@@ -371,6 +458,7 @@ jobs:
 
   prepare-bucket-name:
     needs: resolve-account-id
+    if: ${{ inputs.plan_only == false }}
     runs-on: ubuntu-latest
     outputs:
       s3_bucket_name: ${{ steps.out.outputs.bucket }}
@@ -387,6 +475,7 @@ jobs:
       - wait-for-ready-enviroment
       - configure-elastic-beanstalk-enviroments
       - prepare-bucket-name
+    if: ${{ inputs.plan_only == false }}
     permissions:
       id-token: write
       contents: read
