@@ -135,7 +135,6 @@ jobs:
           REPO_NAME_LC="${REPO_NAME_LC,,}"
           BUCKET_NAME="terraform-${REPO_NAME_LC}-state-${ACCOUNT_ID}"
           echo "Terraform state bucket name: $BUCKET_NAME"
-          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_ENV
 
           max_retries=10
           sleep_time=15
@@ -167,14 +166,50 @@ jobs:
               exit 1
             fi
           done
-      
+
+      # ---------------------------------------------------------------------
+      # Rende dinamico il backend S3 dentro main.tf PRIMA che terraform lo legga.
+      # Sostituisce, SOLO all'interno del blocco backend "s3" { ... }, le righe
+      # 'bucket' e 'region' con i valori usati dalla action (qualunque sia il
+      # valore/placeholder attuale nel file). Il nome bucket coincide con quello
+      # creato/riusato nello step precedente: terraform-<repo>-state-<ACCOUNT_ID>.
+      # ---------------------------------------------------------------------
+      - name: Make Terraform S3 backend dynamic in main.tf
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          ACCOUNT_ID: ${{ needs.resolve-account-id.outputs.account_id }}
+        run: |
+          set -e
+          if [[ ! -f "main.tf" ]]; then
+            echo "ERROR: main.tf non trovato in ${{ inputs.working_directory }}" >&2
+            exit 1
+          fi
+
+          REPO_NAME_LC="${{ github.event.repository.name }}"
+          REPO_NAME_LC="${REPO_NAME_LC,,}"
+          BUCKET_NAME="terraform-${REPO_NAME_LC}-state-${ACCOUNT_ID}"
+          REGION="${{ inputs.aws_region }}"
+
+          echo "Patching backend S3 -> bucket=$BUCKET_NAME region=$REGION"
+
+          # Range address: dalla riga 'backend "s3" {' fino alla prima '}' (il
+          # blocco backend non contiene graffe annidate, quindi il range e' esatto).
+          # Le sostituzioni preservano l'indentazione originale (\1).
+          sed -i -E "/backend[[:space:]]+\"s3\"[[:space:]]*\{/,/\}/ {
+            s|^([[:space:]]*)bucket[[:space:]]*=.*|\1bucket = \"${BUCKET_NAME}\"|
+            s|^([[:space:]]*)region[[:space:]]*=.*|\1region = \"${REGION}\"|
+          }" main.tf
+
+          echo "----- backend block dopo il patch -----"
+          grep -n -A6 -E 'backend[[:space:]]+"s3"' main.tf || true
+
       - name: Extract S3 backend info from Terraform (safe)
         working-directory: ${{ inputs.working_directory }}
         id: s3info
         run: |
           set -e
       
-          # 1️⃣ Inizializza Terraform
+          # 1 Inizializza Terraform
           if [[ ! -f "main.tf" ]]; then
             echo "Errore: main.tf non trovato!"
             exit 1
@@ -268,7 +303,7 @@ jobs:
         id: configure-app
         working-directory: ${{ inputs.working_directory }}
         run: |
-          # Logica di fallback: se eb_app_name è vuoto, usa il nome del repo
+          # Logica di fallback: se eb_app_name e' vuoto, usa il nome del repo
           APP_NAME="${{ inputs.eb_app_name }}"
           if [ -z "$APP_NAME" ]; then
             APP_NAME="${{ github.event.repository.name }}"
@@ -300,7 +335,7 @@ jobs:
     - name: Wait for Elastic Beanstalk environment to be ready
       id: configure-env
       run: |
-          # Logica di fallback: se eb_env_name è vuoto, usa il nome del repo
+          # Logica di fallback: se eb_env_name e' vuoto, usa il nome del repo
           ENV_NAME="${{ inputs.eb_env_name }}"
           if [ -z "$ENV_NAME" ]; then
             ENV_NAME="${{ github.event.repository.name }}"
