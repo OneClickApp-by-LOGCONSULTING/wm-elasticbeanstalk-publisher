@@ -16,12 +16,12 @@ on:
 
       # --- Nomi (vuoti = derivati dal nome repo) ---
       eb_env_name:
-        description: 'EB environment name. Vuoto => <repo>-env. Passare il nome ESATTO per adottare un ambiente esistente.'
+        description: 'EB environment name. Vuoto => nome del repo. Passare il nome ESATTO solo per casi particolari.'
         type: string
         default: ''
         required: false
       eb_app_name:
-        description: 'EB application name. Vuoto => <repo>-app.'
+        description: 'EB application name. Vuoto => nome del repo (coincide con l environment).'
         type: string
         default: ''
         required: false
@@ -173,8 +173,10 @@ jobs:
         run: |
           set -e
           REPO="${{ github.event.repository.name }}"
-          APP="${IN_APP:-${REPO}-app}"
-          ENVN="${IN_ENV:-${REPO}-env}"
+          # Modello "app semplice": application, environment e project_tag
+          # coincidono con il nome del repo, salvo override espliciti.
+          APP="${IN_APP:-$REPO}"
+          ENVN="${IN_ENV:-$REPO}"
           PROJECT="${IN_PROJECT:-$REPO}"
 
           {
