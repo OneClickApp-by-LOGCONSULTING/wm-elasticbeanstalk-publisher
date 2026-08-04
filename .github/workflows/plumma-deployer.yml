@@ -203,6 +203,45 @@ jobs:
           echo "----- backend block dopo il patch -----"
           grep -n -A6 -E 'backend[[:space:]]+"s3"' main.tf || true
 
+      # ---------------------------------------------------------------------
+      # Risolve il solution stack Elastic Beanstalk piu' recente disponibile
+      # nella regione, per la famiglia richiesta (Amazon Linux 2023 + Tomcat 10
+      # + Corretto 21), e lo scrive in main.tf. Evita il fallimento
+      # "No Solution Stack named ..." quando AWS ritira le versioni minori
+      # vecchie hardcodate nel file.
+      # ---------------------------------------------------------------------
+      - name: Use latest matching Elastic Beanstalk solution stack
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          set -e
+          if [[ ! -f "main.tf" ]]; then
+            echo "ERROR: main.tf non trovato in ${{ inputs.working_directory }}" >&2
+            exit 1
+          fi
+
+          STACK=$(aws elasticbeanstalk list-available-solution-stacks \
+            --region "${{ inputs.aws_region }}" \
+            --query "SolutionStacks[?contains(@, 'Amazon Linux 2023') && contains(@, 'Tomcat 10') && contains(@, 'Corretto 21')] | [0]" \
+            --output text)
+
+          if [ -z "$STACK" ] || [ "$STACK" = "None" ]; then
+            echo "ERROR: nessun solution stack 'Amazon Linux 2023 / Tomcat 10 / Corretto 21' disponibile in ${{ inputs.aws_region }}" >&2
+            echo "Stack Tomcat disponibili in regione:" >&2
+            aws elasticbeanstalk list-available-solution-stacks \
+              --region "${{ inputs.aws_region }}" \
+              --query "SolutionStacks[?contains(@, 'Tomcat')]" --output table >&2 || true
+            exit 1
+          fi
+
+          echo "Using solution stack: $STACK"
+
+          # solution_stack_name compare una sola volta (risorsa environment):
+          # sostituzione sicura, preserva l'indentazione.
+          sed -i -E "s|^([[:space:]]*solution_stack_name[[:space:]]*=[[:space:]]*).*|\1\"${STACK}\"|" main.tf
+
+          echo "----- solution_stack_name dopo il patch -----"
+          grep -n "solution_stack_name" main.tf || true
+
       - name: Extract S3 backend info from Terraform (safe)
         working-directory: ${{ inputs.working_directory }}
         id: s3info
@@ -284,14 +323,82 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
         run: terraform init -input=false -lock=false -reconfigure
 
-      - name: Terraform import common resources
+      # ---------------------------------------------------------------------
+      # Import "self-healing": ricostruisce lo state importando TUTTE le risorse
+      # gia' esistenti in AWS (utile dopo una perdita di state). Cio' che non
+      # esiste ancora viene saltato (guardie 'if') cosi' i primi deploy puliti
+      # continuano a funzionare, e ai run successivi gli import sono no-op.
+      # Convenzione nomi risorse: <repo>-app, <repo>-env, eb-waf-<repo>, <repo>.
+      # ---------------------------------------------------------------------
+      - name: Terraform import existing resources (self-heal state)
         working-directory: ${{ inputs.working_directory }}
+        env:
+          REGION: ${{ inputs.aws_region }}
+          REPO: ${{ github.event.repository.name }}
         run: |
-          terraform import aws_iam_instance_profile.eb_ec2_instance_profile aws-elasticbeanstalk-ec2-role || true 
-          terraform import aws_iam_role.eb_ec2_role aws-elasticbeanstalk-ec2-role || true 
-          terraform import aws_wafv2_regex_pattern_set.blocked_http_methods http-methods-blocked || true
-          terraform import aws_wafv2_regex_pattern_set.valid_http_methods allowed-http-methods || true
-          terraform import aws_wafv2_regex_pattern_set.path_services allowed-path-prefix-services || true
+          set -uo pipefail
+
+          # --- Risorse comuni a nome fisso ---
+          terraform import aws_iam_role.eb_ec2_role aws-elasticbeanstalk-ec2-role || true
+          terraform import aws_iam_instance_profile.eb_ec2_instance_profile aws-elasticbeanstalk-ec2-role || true
+          terraform import aws_iam_role_policy.eb_ec2_cloudwatch_logs "aws-elasticbeanstalk-ec2-role:EBCloudWatchLogsPolicy" || true
+          terraform import aws_iam_role_policy_attachment.eb_ec2_role_attach "aws-elasticbeanstalk-ec2-role/arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier" || true
+          terraform import aws_iam_role_policy_attachment.eb_ec2_worker_attach "aws-elasticbeanstalk-ec2-role/arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier" || true
+
+          # --- WAF regex pattern sets (import id = ID/NAME/SCOPE) ---
+          import_regex_set() {
+            local tfaddr="$1" name="$2" id
+            id=$(aws wafv2 list-regex-pattern-sets --scope REGIONAL --region "$REGION" \
+                  --query "RegexPatternSets[?Name=='$name'].Id | [0]" --output text)
+            if [ -n "$id" ] && [ "$id" != "None" ]; then
+              terraform import "$tfaddr" "$id/$name/REGIONAL" || true
+            else
+              echo "Regex set $name non presente in AWS: skip (verra' creato)."
+            fi
+          }
+          import_regex_set aws_wafv2_regex_pattern_set.valid_http_methods   allowed-http-methods
+          import_regex_set aws_wafv2_regex_pattern_set.blocked_http_methods http-methods-blocked
+          import_regex_set aws_wafv2_regex_pattern_set.path_services        allowed-path-prefix-services
+
+          # --- WAF Web ACL (import id = ID/NAME/SCOPE) ---
+          ACL_NAME="eb-waf-${REPO}"
+          ACL_ID=$(aws wafv2 list-web-acls --scope REGIONAL --region "$REGION" \
+                    --query "WebACLs[?Name=='$ACL_NAME'].Id | [0]" --output text)
+          if [ -n "$ACL_ID" ] && [ "$ACL_ID" != "None" ]; then
+            terraform import "aws_wafv2_web_acl.${REPO}" "$ACL_ID/$ACL_NAME/REGIONAL" || true
+          else
+            echo "Web ACL $ACL_NAME non presente: skip."
+          fi
+
+          # --- EB Application (import id = app name) ---
+          APP_NAME="${REPO}-app"
+          if aws elasticbeanstalk describe-applications --application-names "$APP_NAME" --region "$REGION" \
+               --query "Applications[0].ApplicationName" --output text 2>/dev/null | grep -q "$APP_NAME"; then
+            terraform import "aws_elastic_beanstalk_application.${APP_NAME}" "$APP_NAME" || true
+          else
+            echo "EB application $APP_NAME non presente: skip."
+          fi
+
+          # --- EB Environment (import id = environment id e-xxxx) ---
+          ENV_NAME="${REPO}-env"
+          ENV_ID=$(aws elasticbeanstalk describe-environments --environment-names "$ENV_NAME" --region "$REGION" \
+                    --query "Environments[?Status!='Terminated'].EnvironmentId | [0]" --output text)
+          if [ -n "$ENV_ID" ] && [ "$ENV_ID" != "None" ]; then
+            terraform import "aws_elastic_beanstalk_environment.${ENV_NAME}" "$ENV_ID" || true
+          else
+            echo "EB environment $ENV_NAME non presente: skip (verra' creato)."
+          fi
+
+          # --- WAF Web ACL Association (import id = WEB_ACL_ARN,RESOURCE_ARN) ---
+          if [ -n "${ACL_ID:-}" ] && [ "$ACL_ID" != "None" ] && [ -n "${ENV_ID:-}" ] && [ "$ENV_ID" != "None" ]; then
+            ACL_ARN=$(aws wafv2 list-web-acls --scope REGIONAL --region "$REGION" \
+                       --query "WebACLs[?Name=='$ACL_NAME'].ARN | [0]" --output text)
+            LB_ARN=$(aws elasticbeanstalk describe-environment-resources --environment-name "$ENV_NAME" --region "$REGION" \
+                       --query "EnvironmentResources.LoadBalancers[0].Name" --output text)
+            if [ -n "$ACL_ARN" ] && [ "$ACL_ARN" != "None" ] && [ -n "$LB_ARN" ] && [ "$LB_ARN" != "None" ]; then
+              terraform import "aws_wafv2_web_acl_association.${REPO}" "${ACL_ARN},${LB_ARN}" || true
+            fi
+          fi
 
 
   
