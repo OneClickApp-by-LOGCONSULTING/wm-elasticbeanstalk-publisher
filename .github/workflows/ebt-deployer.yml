@@ -110,8 +110,8 @@ jobs:
       - run: |
           REPO_NAME=${{ github.event.repository.name }}
           echo "💡 The $REPO_NAME repository has been cloned to the runner."          
-          echo "========== Wavemaker App profiles properties files ========"
-          cd profiles 
+          echo "========== Plumma App profiles properties files ========"
+      #   cd profiles 
           ls
           echo "=========================================================="
 
