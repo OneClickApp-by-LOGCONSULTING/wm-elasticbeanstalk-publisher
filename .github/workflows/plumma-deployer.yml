@@ -4,71 +4,99 @@ on:
   workflow_call:
     inputs:
       terraform_version:
-        description: 'Terraform version to use'
         type: string
         default: '1.11.3'
       aws_region:
-        description: 'AWS Region for deployment and S3 resources'
+        description: 'AWS Region for deployment and S3 resources (must match VPC/subnets/certificate)'
         type: string
         default: 'eu-west-1'
       working_directory:
-        description: 'Root directory for Terraform configuration files'
         type: string
         default: 'src/main/webapp/resources/IaaC'
+
+      # --- Nomi (vuoti = derivati dal nome repo) ---
       eb_env_name:
-        description: 'Elastic Beanstalk environment name (e.g., connect-env)'
+        description: 'EB environment name. Vuoto => <repo>-env. Passare il nome ESATTO per adottare un ambiente esistente.'
         type: string
         default: ''
         required: false
       eb_app_name:
-        description: 'Elastic Beanstalk application name'
+        description: 'EB application name. Vuoto => <repo>-app.'
         type: string
         default: ''
         required: false
+      project_tag:
+        description: 'Tag PROJECT e prefisso WAF. Vuoto => nome repo.'
+        type: string
+        default: ''
+        required: false
+
+      # --- Parametri account-specifici (OBBLIGATORI) ---
+      vpc_id:
+        description: 'VPC ID in cui creare l ambiente EB'
+        type: string
+        required: true
+      subnets:
+        description: 'Subnet separate da virgola (istanze + ALB)'
+        type: string
+        required: true
+      ssl_certificate_arn:
+        description: 'ARN certificato ACM (stessa regione) per il listener 443'
+        type: string
+        required: true
+
+      # --- Knobs opzionali (hanno un default) ---
+      instance_type:
+        type: string
+        default: 't4g.small'
+      instance_architecture:
+        type: string
+        default: 'arm64'
+      min_size:
+        type: string
+        default: '1'
+      max_size:
+        type: string
+        default: '1'
+      health_check_path:
+        type: string
+        default: '/services/health/check'
+
+      # --- Build/deploy passthrough ---
       node_version:
-        description: 'Node.js version for the application build'
         type: string
         default: '22.18.0'
       npm_version:
-        description: 'NPM version to use'
         type: string
         default: '10.9.3'
       java_version:
-        description: 'Java JDK version'
         type: string
         default: '21'
       maven_version:
-        description: 'Apache Maven version'
         type: string
         default: '3.9.12'
-      s3_bucket_name:
-        description: 'S3 bucket name for uploading deployment artifacts'
-        type: string
-        required: false
       maven_profile:
-        description: 'Application profile (e.g., prod, dev)'
         type: string
         default: 'prod'
       log-group-prefix:
-         required: false
-         type: string  
+        required: false
+        type: string
       root-war-url:
-         required: false
-         type: string  
-         default: ''
+        required: false
+        type: string
+        default: ''
       loader-io-token:
-         required: false
-         type: string  
-         default: ''
-      force-lowercase-app-name: # Force pipeline to change the WAR file name to deploy to lowercase letter only.
+        required: false
+        type: string
+        default: ''
+      force-lowercase-app-name:
         required: false
         type: boolean
         default: false
-      force-root-app-name: # force Wavemaker application name as ROOT.war, it places Tomcat to have WM-APP in root context.
+      force-root-app-name:
         required: false
         type: boolean
-        default: false  
-      
+        default: false
 
     secrets:
       AWS_ROLE_TO_ASSUME_FOR_DEPLOY:
@@ -77,13 +105,6 @@ on:
 
 jobs:
 
-  # ---------------------------------------------------------------------
-  # Risolve l'Account ID AWS una sola volta: viene usato per costruire nomi
-  # di bucket univoci a livello globale ma deterministici per repo+account,
-  # cosi' che la prima volta il nome sia "libero" e vengano creati, mentre
-  # le volte successive lo stesso nome esiste gia' e viene semplicemente
-  # riutilizzato (mai ricreato).
-  # ---------------------------------------------------------------------
   resolve-account-id:
     runs-on: ubuntu-latest
     outputs:
@@ -97,29 +118,27 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
           aws-region: ${{ inputs.aws_region }}
-
       - name: Get AWS Account ID
         id: whoami
-        run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          echo "account_id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
+        run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_OUTPUT
 
   configure-elastic-beanstalk-enviroments:
       needs: resolve-account-id
       runs-on: ubuntu-latest
       outputs:
-        eb_app_name: ${{ steps.configure-app.outputs.eb_app_name }}
+        eb_app_name: ${{ steps.resolve.outputs.app_name }}
+        eb_env_name: ${{ steps.resolve.outputs.env_name }}
       permissions:
         id-token: write
         contents: read
       steps:
       - uses: actions/checkout@v4.2.2
-  
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: ${{ inputs.terraform_version }}
-  
+
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v6.2.3
         with:
@@ -131,304 +150,194 @@ jobs:
           ACCOUNT_ID: ${{ needs.resolve-account-id.outputs.account_id }}
         run: |
           set -e
-          REPO_NAME_LC="${{ github.event.repository.name }}"
-          REPO_NAME_LC="${REPO_NAME_LC,,}"
-          BUCKET_NAME="terraform-${REPO_NAME_LC}-state-${ACCOUNT_ID}"
-          echo "Terraform state bucket name: $BUCKET_NAME"
-
-          max_retries=10
-          sleep_time=15
-          for i in $(seq 1 $max_retries); do
-            OUTPUT=$(aws s3api create-bucket \
-              --bucket "$BUCKET_NAME" \
-              --region "${{ inputs.aws_region }}" \
-              --create-bucket-configuration LocationConstraint="${{ inputs.aws_region }}" 2>&1) && {
-                echo "Bucket $BUCKET_NAME created."
-                break
-              }
-
-            if echo "$OUTPUT" | grep -q "BucketAlreadyOwnedByYou"; then
-              echo "Bucket $BUCKET_NAME already exists and belongs to this account. Reusing it."
-              break
-            elif echo "$OUTPUT" | grep -q "OperationAborted"; then
-              echo "Conflicting operation in progress (bucket likely just deleted). Retry $i/$max_retries in ${sleep_time}s..."
-              sleep $sleep_time
-            elif echo "$OUTPUT" | grep -q "BucketAlreadyExists"; then
-              echo "ERROR: bucket name $BUCKET_NAME is taken by another AWS account. This should not happen since the name includes the account ID." >&2
-              exit 1
-            else
-              echo "$OUTPUT" >&2
-              exit 1
-            fi
-
-            if [ "$i" -eq "$max_retries" ]; then
-              echo "ERROR: could not create/verify bucket $BUCKET_NAME after $max_retries attempts." >&2
-              exit 1
-            fi
+          REPO_LC="${{ github.event.repository.name }}"; REPO_LC="${REPO_LC,,}"
+          BUCKET_NAME="terraform-${REPO_LC}-state-${ACCOUNT_ID}"
+          echo "Terraform state bucket: $BUCKET_NAME"
+          for i in $(seq 1 10); do
+            OUT=$(aws s3api create-bucket --bucket "$BUCKET_NAME" --region "${{ inputs.aws_region }}" \
+                  --create-bucket-configuration LocationConstraint="${{ inputs.aws_region }}" 2>&1) && { echo "Created."; break; }
+            if echo "$OUT" | grep -q "BucketAlreadyOwnedByYou"; then echo "Already owned. Reusing."; break
+            elif echo "$OUT" | grep -q "OperationAborted"; then echo "Conflict, retry $i..."; sleep 15
+            elif echo "$OUT" | grep -q "BucketAlreadyExists"; then echo "ERROR: name taken by another account" >&2; exit 1
+            else echo "$OUT" >&2; exit 1; fi
+            [ "$i" -eq 10 ] && { echo "ERROR: bucket not ready" >&2; exit 1; }
           done
 
-      # ---------------------------------------------------------------------
-      # Rende dinamico il backend S3 dentro main.tf PRIMA che terraform lo legga.
-      # Sostituisce, SOLO all'interno del blocco backend "s3" { ... }, le righe
-      # 'bucket' e 'region' con i valori usati dalla action (qualunque sia il
-      # valore/placeholder attuale nel file). Il nome bucket coincide con quello
-      # creato/riusato nello step precedente: terraform-<repo>-state-<ACCOUNT_ID>.
-      # ---------------------------------------------------------------------
+      # --- Risolve nomi/regione e li espone come TF_VAR_* per tutti gli step terraform ---
+      - name: Resolve Terraform variables
+        id: resolve
+        env:
+          IN_APP: ${{ inputs.eb_app_name }}
+          IN_ENV: ${{ inputs.eb_env_name }}
+          IN_PROJECT: ${{ inputs.project_tag }}
+        run: |
+          set -e
+          REPO="${{ github.event.repository.name }}"
+          APP="${IN_APP:-${REPO}-app}"
+          ENVN="${IN_ENV:-${REPO}-env}"
+          PROJECT="${IN_PROJECT:-$REPO}"
+
+          {
+            echo "TF_VAR_aws_region=${{ inputs.aws_region }}"
+            echo "TF_VAR_application_name=$APP"
+            echo "TF_VAR_environment_name=$ENVN"
+            echo "TF_VAR_project_tag=$PROJECT"
+            echo "TF_VAR_vpc_id=${{ inputs.vpc_id }}"
+            echo "TF_VAR_subnets=${{ inputs.subnets }}"
+            echo "TF_VAR_ssl_certificate_arn=${{ inputs.ssl_certificate_arn }}"
+            echo "TF_VAR_instance_type=${{ inputs.instance_type }}"
+            echo "TF_VAR_instance_architecture=${{ inputs.instance_architecture }}"
+            echo "TF_VAR_min_size=${{ inputs.min_size }}"
+            echo "TF_VAR_max_size=${{ inputs.max_size }}"
+            echo "TF_VAR_health_check_path=${{ inputs.health_check_path }}"
+            echo "RESOLVED_APP_NAME=$APP"
+            echo "RESOLVED_ENV_NAME=$ENVN"
+            echo "RESOLVED_PROJECT=$PROJECT"
+          } >> "$GITHUB_ENV"
+
+          echo "app_name=$APP" >> "$GITHUB_OUTPUT"
+          echo "env_name=$ENVN" >> "$GITHUB_OUTPUT"
+          echo "Resolved: app=$APP env=$ENVN project=$PROJECT region=${{ inputs.aws_region }}"
+
+      # --- Rende dinamico SOLO bucket+region del backend S3 in main.tf (il backend non supporta variabili) ---
       - name: Make Terraform S3 backend dynamic in main.tf
         working-directory: ${{ inputs.working_directory }}
         env:
           ACCOUNT_ID: ${{ needs.resolve-account-id.outputs.account_id }}
         run: |
           set -e
-          if [[ ! -f "main.tf" ]]; then
-            echo "ERROR: main.tf non trovato in ${{ inputs.working_directory }}" >&2
-            exit 1
-          fi
-
-          REPO_NAME_LC="${{ github.event.repository.name }}"
-          REPO_NAME_LC="${REPO_NAME_LC,,}"
-          BUCKET_NAME="terraform-${REPO_NAME_LC}-state-${ACCOUNT_ID}"
+          [ -f main.tf ] || { echo "ERROR: main.tf non trovato in ${{ inputs.working_directory }}" >&2; exit 1; }
+          REPO_LC="${{ github.event.repository.name }}"; REPO_LC="${REPO_LC,,}"
+          BUCKET_NAME="terraform-${REPO_LC}-state-${ACCOUNT_ID}"
           REGION="${{ inputs.aws_region }}"
-
-          echo "Patching backend S3 -> bucket=$BUCKET_NAME region=$REGION"
-
-          # Range address: dalla riga 'backend "s3" {' fino alla prima '}' (il
-          # blocco backend non contiene graffe annidate, quindi il range e' esatto).
-          # Le sostituzioni preservano l'indentazione originale (\1).
+          echo "Backend -> bucket=$BUCKET_NAME region=$REGION"
           sed -i -E "/backend[[:space:]]+\"s3\"[[:space:]]*\{/,/\}/ {
             s|^([[:space:]]*)bucket[[:space:]]*=.*|\1bucket = \"${BUCKET_NAME}\"|
             s|^([[:space:]]*)region[[:space:]]*=.*|\1region = \"${REGION}\"|
           }" main.tf
-
-          echo "----- backend block dopo il patch -----"
           grep -n -A6 -E 'backend[[:space:]]+"s3"' main.tf || true
 
-      # ---------------------------------------------------------------------
-      # Risolve il solution stack Elastic Beanstalk piu' recente disponibile
-      # nella regione, per la famiglia richiesta (Amazon Linux 2023 + Tomcat 10
-      # + Corretto 21), e lo scrive in main.tf. Evita il fallimento
-      # "No Solution Stack named ..." quando AWS ritira le versioni minori
-      # vecchie hardcodate nel file.
-      # ---------------------------------------------------------------------
-      - name: Use latest matching Elastic Beanstalk solution stack
-        working-directory: ${{ inputs.working_directory }}
+      # --- Risolve il solution stack piu' recente e lo passa via TF_VAR ---
+      - name: Resolve Elastic Beanstalk solution stack
         run: |
           set -e
-          if [[ ! -f "main.tf" ]]; then
-            echo "ERROR: main.tf non trovato in ${{ inputs.working_directory }}" >&2
-            exit 1
-          fi
-
-          STACK=$(aws elasticbeanstalk list-available-solution-stacks \
-            --region "${{ inputs.aws_region }}" \
+          STACK=$(aws elasticbeanstalk list-available-solution-stacks --region "${{ inputs.aws_region }}" \
             --query "SolutionStacks[?contains(@, 'Amazon Linux 2023') && contains(@, 'Tomcat 10') && contains(@, 'Corretto 21')] | [0]" \
             --output text)
-
           if [ -z "$STACK" ] || [ "$STACK" = "None" ]; then
-            echo "ERROR: nessun solution stack 'Amazon Linux 2023 / Tomcat 10 / Corretto 21' disponibile in ${{ inputs.aws_region }}" >&2
-            echo "Stack Tomcat disponibili in regione:" >&2
-            aws elasticbeanstalk list-available-solution-stacks \
-              --region "${{ inputs.aws_region }}" \
+            echo "ERROR: nessun solution stack AL2023/Tomcat 10/Corretto 21 in ${{ inputs.aws_region }}" >&2
+            aws elasticbeanstalk list-available-solution-stacks --region "${{ inputs.aws_region }}" \
               --query "SolutionStacks[?contains(@, 'Tomcat')]" --output table >&2 || true
             exit 1
           fi
-
-          echo "Using solution stack: $STACK"
-
-          # solution_stack_name compare una sola volta (risorsa environment):
-          # sostituzione sicura, preserva l'indentazione.
-          sed -i -E "s|^([[:space:]]*solution_stack_name[[:space:]]*=[[:space:]]*).*|\1\"${STACK}\"|" main.tf
-
-          echo "----- solution_stack_name dopo il patch -----"
-          grep -n "solution_stack_name" main.tf || true
+          echo "Solution stack: $STACK"
+          echo "TF_VAR_solution_stack_name=$STACK" >> "$GITHUB_ENV"
 
       - name: Extract S3 backend info from Terraform (safe)
         working-directory: ${{ inputs.working_directory }}
         id: s3info
         run: |
           set -e
-      
-          # 1 Inizializza Terraform
-          if [[ ! -f "main.tf" ]]; then
-            echo "Errore: main.tf non trovato!"
-            exit 1
-          fi
-      
-
+          [ -f main.tf ] || { echo "Errore: main.tf non trovato!"; exit 1; }
           terraform init -input=false -reconfigure -lock=false
-      
           STATE_FILE=".terraform/terraform.tfstate"
-      
-          if [[ ! -f "$STATE_FILE" ]]; then
-            echo "Errore: backend state non trovato"
-            exit 1
-          fi
-      
-          BUCKET=$(jq -r '.backend.config.bucket'  "$STATE_FILE")
-          KEY=$(jq -r '.backend.config.key'        "$STATE_FILE")
-          REGION=$(jq -r '.backend.config.region'  "$STATE_FILE")
-      
-          echo "Bucket=$BUCKET"
-          echo "Key=$KEY"
-          echo "Region=$REGION"
-      
-          echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
-          echo "key=$KEY" >> $GITHUB_OUTPUT
-          echo "region=$REGION" >> $GITHUB_OUTPUT
-          
-      
+          [ -f "$STATE_FILE" ] || { echo "Errore: backend state non trovato"; exit 1; }
+          echo "bucket=$(jq -r '.backend.config.bucket' "$STATE_FILE")" >> $GITHUB_OUTPUT
+          echo "key=$(jq -r '.backend.config.key' "$STATE_FILE")" >> $GITHUB_OUTPUT
+          echo "region=$(jq -r '.backend.config.region' "$STATE_FILE")" >> $GITHUB_OUTPUT
 
       - name: Ensure S3 bucket exists for ebt-deployments artifacts (create once, reuse after)
         env:
           ACCOUNT_ID: ${{ needs.resolve-account-id.outputs.account_id }}
         run: |
           set -e
-          REPO_NAME_LC="${{ github.event.repository.name }}"
-          REPO_NAME_LC="${REPO_NAME_LC,,}"
-          BUCKET_NAME="${REPO_NAME_LC}-ebt-deployments-${ACCOUNT_ID}"
-          echo "EBT deployments bucket name: $BUCKET_NAME"
-
-          max_retries=10
-          sleep_time=15
-          for i in $(seq 1 $max_retries); do
-            OUTPUT=$(aws s3api create-bucket \
-              --bucket "$BUCKET_NAME" \
-              --region "${{ inputs.aws_region }}" \
-              --create-bucket-configuration LocationConstraint="${{ inputs.aws_region }}" 2>&1) && {
-                echo "Bucket $BUCKET_NAME created."
-                break
-              }
-
-            if echo "$OUTPUT" | grep -q "BucketAlreadyOwnedByYou"; then
-              echo "Bucket $BUCKET_NAME already exists and belongs to this account. Reusing it."
-              break
-            elif echo "$OUTPUT" | grep -q "OperationAborted"; then
-              echo "Conflicting operation in progress (bucket likely just deleted). Retry $i/$max_retries in ${sleep_time}s..."
-              sleep $sleep_time
-            elif echo "$OUTPUT" | grep -q "BucketAlreadyExists"; then
-              echo "ERROR: bucket name $BUCKET_NAME is taken by another AWS account. This should not happen since the name includes the account ID." >&2
-              exit 1
-            else
-              echo "$OUTPUT" >&2
-              exit 1
-            fi
-
-            if [ "$i" -eq "$max_retries" ]; then
-              echo "ERROR: could not create/verify bucket $BUCKET_NAME after $max_retries attempts." >&2
-              exit 1
-            fi
+          REPO_LC="${{ github.event.repository.name }}"; REPO_LC="${REPO_LC,,}"
+          BUCKET_NAME="${REPO_LC}-ebt-deployments-${ACCOUNT_ID}"
+          echo "EBT deployments bucket: $BUCKET_NAME"
+          for i in $(seq 1 10); do
+            OUT=$(aws s3api create-bucket --bucket "$BUCKET_NAME" --region "${{ inputs.aws_region }}" \
+                  --create-bucket-configuration LocationConstraint="${{ inputs.aws_region }}" 2>&1) && { echo "Created."; break; }
+            if echo "$OUT" | grep -q "BucketAlreadyOwnedByYou"; then echo "Already owned. Reusing."; break
+            elif echo "$OUT" | grep -q "OperationAborted"; then echo "Conflict, retry $i..."; sleep 15
+            elif echo "$OUT" | grep -q "BucketAlreadyExists"; then echo "ERROR: name taken by another account" >&2; exit 1
+            else echo "$OUT" >&2; exit 1; fi
+            [ "$i" -eq 10 ] && { echo "ERROR: bucket not ready" >&2; exit 1; }
           done
-     
+
       - name: Terraform Init
         working-directory: ${{ inputs.working_directory }}
         run: terraform init -input=false -lock=false -reconfigure
 
-      # ---------------------------------------------------------------------
-      # Import "self-healing": ricostruisce lo state importando TUTTE le risorse
-      # gia' esistenti in AWS (utile dopo una perdita di state). Cio' che non
-      # esiste ancora viene saltato (guardie 'if') cosi' i primi deploy puliti
-      # continuano a funzionare, e ai run successivi gli import sono no-op.
-      # Convenzione nomi risorse: <repo>-app, <repo>-env, eb-waf-<repo>, <repo>.
-      # ---------------------------------------------------------------------
+      # --- Import self-healing: ricostruisce lo state se e' stato perso ---
       - name: Terraform import existing resources (self-heal state)
         working-directory: ${{ inputs.working_directory }}
         env:
           REGION: ${{ inputs.aws_region }}
-          REPO: ${{ github.event.repository.name }}
         run: |
           set -uo pipefail
 
-          # --- Risorse comuni a nome fisso ---
           terraform import aws_iam_role.eb_ec2_role aws-elasticbeanstalk-ec2-role || true
           terraform import aws_iam_instance_profile.eb_ec2_instance_profile aws-elasticbeanstalk-ec2-role || true
           terraform import aws_iam_role_policy.eb_ec2_cloudwatch_logs "aws-elasticbeanstalk-ec2-role:EBCloudWatchLogsPolicy" || true
           terraform import aws_iam_role_policy_attachment.eb_ec2_role_attach "aws-elasticbeanstalk-ec2-role/arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier" || true
           terraform import aws_iam_role_policy_attachment.eb_ec2_worker_attach "aws-elasticbeanstalk-ec2-role/arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier" || true
 
-          # --- WAF regex pattern sets (import id = ID/NAME/SCOPE) ---
           import_regex_set() {
             local tfaddr="$1" name="$2" id
             id=$(aws wafv2 list-regex-pattern-sets --scope REGIONAL --region "$REGION" \
                   --query "RegexPatternSets[?Name=='$name'].Id | [0]" --output text)
             if [ -n "$id" ] && [ "$id" != "None" ]; then
               terraform import "$tfaddr" "$id/$name/REGIONAL" || true
-            else
-              echo "Regex set $name non presente in AWS: skip (verra' creato)."
-            fi
+            else echo "Regex set $name assente: skip."; fi
           }
           import_regex_set aws_wafv2_regex_pattern_set.valid_http_methods   allowed-http-methods
           import_regex_set aws_wafv2_regex_pattern_set.blocked_http_methods http-methods-blocked
           import_regex_set aws_wafv2_regex_pattern_set.path_services        allowed-path-prefix-services
 
-          # --- WAF Web ACL (import id = ID/NAME/SCOPE) ---
-          ACL_NAME="eb-waf-${REPO}"
+          ACL_NAME="eb-waf-${RESOLVED_PROJECT}"
           ACL_ID=$(aws wafv2 list-web-acls --scope REGIONAL --region "$REGION" \
                     --query "WebACLs[?Name=='$ACL_NAME'].Id | [0]" --output text)
           if [ -n "$ACL_ID" ] && [ "$ACL_ID" != "None" ]; then
-            terraform import "aws_wafv2_web_acl.${REPO}" "$ACL_ID/$ACL_NAME/REGIONAL" || true
-          else
-            echo "Web ACL $ACL_NAME non presente: skip."
-          fi
+            terraform import aws_wafv2_web_acl.waf "$ACL_ID/$ACL_NAME/REGIONAL" || true
+          else echo "Web ACL $ACL_NAME assente: skip."; fi
 
-          # --- EB Application (import id = app name) ---
-          APP_NAME="${REPO}-app"
-          if aws elasticbeanstalk describe-applications --application-names "$APP_NAME" --region "$REGION" \
-               --query "Applications[0].ApplicationName" --output text 2>/dev/null | grep -q "$APP_NAME"; then
-            terraform import "aws_elastic_beanstalk_application.${APP_NAME}" "$APP_NAME" || true
-          else
-            echo "EB application $APP_NAME non presente: skip."
-          fi
+          if aws elasticbeanstalk describe-applications --application-names "$RESOLVED_APP_NAME" --region "$REGION" \
+               --query "Applications[0].ApplicationName" --output text 2>/dev/null | grep -q "$RESOLVED_APP_NAME"; then
+            terraform import aws_elastic_beanstalk_application.app "$RESOLVED_APP_NAME" || true
+          else echo "EB application $RESOLVED_APP_NAME assente: skip."; fi
 
-          # --- EB Environment (import id = environment id e-xxxx) ---
-          ENV_NAME="${REPO}-env"
-          ENV_ID=$(aws elasticbeanstalk describe-environments --environment-names "$ENV_NAME" --region "$REGION" \
+          ENV_ID=$(aws elasticbeanstalk describe-environments --environment-names "$RESOLVED_ENV_NAME" --region "$REGION" \
                     --query "Environments[?Status!='Terminated'].EnvironmentId | [0]" --output text)
           if [ -n "$ENV_ID" ] && [ "$ENV_ID" != "None" ]; then
-            terraform import "aws_elastic_beanstalk_environment.${ENV_NAME}" "$ENV_ID" || true
-          else
-            echo "EB environment $ENV_NAME non presente: skip (verra' creato)."
-          fi
+            terraform import aws_elastic_beanstalk_environment.env "$ENV_ID" || true
+          else echo "EB environment $RESOLVED_ENV_NAME assente: skip (verra' creato)."; fi
 
-          # --- WAF Web ACL Association (import id = WEB_ACL_ARN,RESOURCE_ARN) ---
           if [ -n "${ACL_ID:-}" ] && [ "$ACL_ID" != "None" ] && [ -n "${ENV_ID:-}" ] && [ "$ENV_ID" != "None" ]; then
             ACL_ARN=$(aws wafv2 list-web-acls --scope REGIONAL --region "$REGION" \
                        --query "WebACLs[?Name=='$ACL_NAME'].ARN | [0]" --output text)
-            LB_ARN=$(aws elasticbeanstalk describe-environment-resources --environment-name "$ENV_NAME" --region "$REGION" \
+            LB_ARN=$(aws elasticbeanstalk describe-environment-resources --environment-name "$RESOLVED_ENV_NAME" --region "$REGION" \
                        --query "EnvironmentResources.LoadBalancers[0].Name" --output text)
             if [ -n "$ACL_ARN" ] && [ "$ACL_ARN" != "None" ] && [ -n "$LB_ARN" ] && [ "$LB_ARN" != "None" ]; then
-              terraform import "aws_wafv2_web_acl_association.${REPO}" "${ACL_ARN},${LB_ARN}" || true
+              terraform import aws_wafv2_web_acl_association.waf "${ACL_ARN},${LB_ARN}" || true
             fi
           fi
 
-
-  
       - name: Terraform Validate
         working-directory: ${{ inputs.working_directory }}
         run: terraform validate
-  
+
       - name: Terraform Plan & Apply
-        id: configure-app
         working-directory: ${{ inputs.working_directory }}
         run: |
-          # Logica di fallback: se eb_app_name e' vuoto, usa il nome del repo
-          APP_NAME="${{ inputs.eb_app_name }}"
-          if [ -z "$APP_NAME" ]; then
-            APP_NAME="${{ github.event.repository.name }}"
-          fi
-          APP_NAME="$APP_NAME-app"
-          echo "Using EB Application Name: $APP_NAME ..."
-          echo "eb_app_name=$APP_NAME" >> $GITHUB_OUTPUT
-          
-          
-          terraform import aws_elastic_beanstalk_application.$APP_NAME $APP_NAME || true
-          terraform plan -lock=false  -out=tfplan
-          terraform apply -lock=false  -auto-approve tfplan
+          echo "Deploying app=$RESOLVED_APP_NAME env=$RESOLVED_ENV_NAME"
+          terraform plan -lock=false -out=tfplan
+          terraform apply -lock=false -auto-approve tfplan
 
   wait-for-ready-enviroment:
     needs: configure-elastic-beanstalk-enviroments
     runs-on: ubuntu-latest
-    outputs:      
-      eb_env_name: ${{ steps.configure-env.outputs.eb_env_name }}
+    outputs:
+      eb_env_name: ${{ needs.configure-elastic-beanstalk-enviroments.outputs.eb_env_name }}
     permissions:
       id-token: write
       contents: read
@@ -440,49 +349,21 @@ jobs:
         aws-region: ${{ inputs.aws_region }}
 
     - name: Wait for Elastic Beanstalk environment to be ready
-      id: configure-env
+      env:
+        ENV_NAME: ${{ needs.configure-elastic-beanstalk-enviroments.outputs.eb_env_name }}
       run: |
-          # Logica di fallback: se eb_env_name e' vuoto, usa il nome del repo
-          ENV_NAME="${{ inputs.eb_env_name }}"
-          if [ -z "$ENV_NAME" ]; then
-            ENV_NAME="${{ github.event.repository.name }}"
-          fi
-          ENV_NAME="$ENV_NAME-env"
-          echo "Using EB Environment Name: $ENV_NAME"
-          echo "eb_env_name=$ENV_NAME" >> $GITHUB_OUTPUT
-          max_retries=30
-          sleep_time=10
-          
-          echo "Checking Elastic Beanstalk environment $ENV_NAME ..."
-          
-          version_label=$(aws elasticbeanstalk describe-environments \
-            --environment-names "$ENV_NAME" \
-            --query "Environments[0].VersionLabel" \
-            --output text)
-          
+          echo "Waiting for EB environment: $ENV_NAME"
+          version_label=$(aws elasticbeanstalk describe-environments --environment-names "$ENV_NAME" \
+            --query "Environments[0].VersionLabel" --output text)
           if [[ "$version_label" == "Sample Application" || "$version_label" == "None" ]]; then
-            echo "Environment uses sample app. Skipping wait."
-            exit 0
+            echo "Sample app / nessuna versione: skip wait."; exit 0
           fi
-          
-          for i in $(seq 1 $max_retries); do
-            status=$(aws elasticbeanstalk describe-environments \
-              --environment-names "$ENV_NAME" \
-              --query "Environments[0].Status" \
-              --output text)
-            
-            health=$(aws elasticbeanstalk describe-environments \
-              --environment-names "$ENV_NAME" \
-              --query "Environments[0].Health" \
-              --output text)
-            
-            echo "Attempt $i: Status = $status, Health = $health"
-            
-            if [ "$status" = "Ready" ] && { [ "$health" = "Green" ] || [ "$health" = "Ok" ]; }; then
-              echo "Environment is ready."
-              exit 0
-            fi
-            sleep $sleep_time
+          for i in $(seq 1 30); do
+            status=$(aws elasticbeanstalk describe-environments --environment-names "$ENV_NAME" --query "Environments[0].Status" --output text)
+            health=$(aws elasticbeanstalk describe-environments --environment-names "$ENV_NAME" --query "Environments[0].Health" --output text)
+            echo "Attempt $i: Status=$status Health=$health"
+            if [ "$status" = "Ready" ] && { [ "$health" = "Green" ] || [ "$health" = "Ok" ]; }; then echo "Ready."; exit 0; fi
+            sleep 10
           done
           exit 1
 
@@ -496,12 +377,11 @@ jobs:
         env:
           ACCOUNT_ID: ${{ needs.resolve-account-id.outputs.account_id }}
         run: |
-          REPO_NAME_LC="${{ github.event.repository.name }}"
-          REPO_NAME_LC="${REPO_NAME_LC,,}"
-          echo "bucket=${REPO_NAME_LC}-ebt-deployments-${ACCOUNT_ID}" >> $GITHUB_OUTPUT
-          
+          REPO_LC="${{ github.event.repository.name }}"; REPO_LC="${REPO_LC,,}"
+          echo "bucket=${REPO_LC}-ebt-deployments-${ACCOUNT_ID}" >> $GITHUB_OUTPUT
+
   call-build-and-deploy:
-    needs: 
+    needs:
       - wait-for-ready-enviroment
       - configure-elastic-beanstalk-enviroments
       - prepare-bucket-name
@@ -509,14 +389,14 @@ jobs:
       id-token: write
       contents: read
     uses: OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher/.github/workflows/ebt-deployer.yml@main
-    secrets: 
+    secrets:
        AWS_ROLE_TO_ASSUME_FOR_DEPLOY: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
     with:
       node-version: ${{ inputs.node_version }}
       npm-version: ${{ inputs.npm_version }}
       maven-version: ${{ inputs.maven_version }}
       java-version: ${{ inputs.java_version }}
-      aws-region: ${{ inputs.aws_region }}      
+      aws-region: ${{ inputs.aws_region }}
       environment-name: ${{ needs.wait-for-ready-enviroment.outputs.eb_env_name }}
       wm-app-name: ${{ github.event.repository.name }}
       beanstalk-application-name: ${{ needs.configure-elastic-beanstalk-enviroments.outputs.eb_app_name }}
