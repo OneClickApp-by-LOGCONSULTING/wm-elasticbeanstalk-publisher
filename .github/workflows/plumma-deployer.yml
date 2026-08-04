@@ -270,15 +270,6 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
         run: terraform init -input=false -lock=false -reconfigure
 
-      - name: One-shot fix - reconcile application in state
-        working-directory: ${{ inputs.working_directory }}
-        run: |
-          set -uo pipefail
-          # Rimuove la voce app dallo state (era calzoni-spares-app, ora distrutta)
-          terraform state rm aws_elastic_beanstalk_application.app || true
-          # Reimporta l'application VERA
-          terraform import aws_elastic_beanstalk_application.app "$RESOLVED_APP_NAME" || true
-
       # --- Import self-healing: ricostruisce lo state se e' stato perso ---
       - name: Terraform import existing resources (self-heal state)
         working-directory: ${{ inputs.working_directory }}
