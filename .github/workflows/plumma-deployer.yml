@@ -77,6 +77,10 @@ on:
       health_check_path:
         type: string
         default: '/services/health/check'
+      ec2_instance_profile_name:
+        description: 'Instance profile EB EC2 (condiviso account, garantito dalla pipeline).'
+        type: string
+        default: 'aws-elasticbeanstalk-ec2-role'
 
       # --- Build/deploy passthrough ---
       node_version:
@@ -188,14 +192,14 @@ jobs:
           APP="${IN_APP:-$REPO}"
           ENVN="${IN_ENV:-$REPO}"
           PROJECT="${IN_PROJECT:-$REPO}"
-          EC2_ROLE="${PROJECT}-eb-ec2-role"
+          EC2_PROFILE="${{ inputs.ec2_instance_profile_name }}"
 
           {
             echo "TF_VAR_aws_region=${{ inputs.aws_region }}"
             echo "TF_VAR_application_name=$APP"
             echo "TF_VAR_environment_name=$ENVN"
             echo "TF_VAR_project_tag=$PROJECT"
-            echo "TF_VAR_ec2_role_name=$EC2_ROLE"
+            echo "TF_VAR_ec2_instance_profile_name=$EC2_PROFILE"
             echo "TF_VAR_vpc_id=${{ inputs.vpc_id }}"
             echo "TF_VAR_subnets=${{ inputs.subnets }}"
             echo "TF_VAR_ssl_certificate_arn=${{ inputs.ssl_certificate_arn }}"
@@ -207,12 +211,12 @@ jobs:
             echo "RESOLVED_APP_NAME=$APP"
             echo "RESOLVED_ENV_NAME=$ENVN"
             echo "RESOLVED_PROJECT=$PROJECT"
-            echo "RESOLVED_EC2_ROLE=$EC2_ROLE"
+            echo "RESOLVED_EC2_PROFILE=$EC2_PROFILE"
           } >> "$GITHUB_ENV"
 
           echo "app_name=$APP" >> "$GITHUB_OUTPUT"
           echo "env_name=$ENVN" >> "$GITHUB_OUTPUT"
-          echo "Resolved: app=$APP env=$ENVN project=$PROJECT ec2_role=$EC2_ROLE region=${{ inputs.aws_region }}"
+          echo "Resolved: app=$APP env=$ENVN project=$PROJECT profile=$EC2_PROFILE region=${{ inputs.aws_region }}"
 
       - name: Make Terraform S3 backend dynamic in main.tf
         working-directory: ${{ inputs.working_directory }}
@@ -279,11 +283,33 @@ jobs:
             [ "$i" -eq 10 ] && { echo "ERROR: bucket not ready" >&2; exit 1; }
           done
 
+      - name: Ensure EB EC2 instance profile exists (shared, idempotent)
+        env:
+          PROFILE: ${{ inputs.ec2_instance_profile_name }}
+          REGION: ${{ inputs.aws_region }}
+        run: |
+          set -e
+          if aws iam get-instance-profile --instance-profile-name "$PROFILE" >/dev/null 2>&1; then
+            echo "Instance profile $PROFILE gia' presente."
+            exit 0
+          fi
+          echo "Creo ruolo e instance profile condivisi: $PROFILE"
+          aws iam create-role --role-name "$PROFILE" \
+            --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}' >/dev/null
+          aws iam attach-role-policy --role-name "$PROFILE" --policy-arn arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
+          aws iam attach-role-policy --role-name "$PROFILE" --policy-arn arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier
+          aws iam put-role-policy --role-name "$PROFILE" --policy-name EBCloudWatchLogsPolicy \
+            --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents","logs:DescribeLogGroups","logs:DescribeLogStreams"],"Resource":"*"}]}'
+          aws iam create-instance-profile --instance-profile-name "$PROFILE" >/dev/null
+          aws iam add-role-to-instance-profile --instance-profile-name "$PROFILE" --role-name "$PROFILE"
+          echo "Attendo la propagazione IAM..."; sleep 12
+
       - name: Terraform Init
         working-directory: ${{ inputs.working_directory }}
         run: terraform init -input=false -reconfigure
 
-      # --- Import self-healing + anti-rename + migrazione IAM per-progetto ---
+      # --- Import self-healing + anti-rename. IAM NON gestito da TF: se presente
+      #     nello state (da versioni precedenti) lo rimuove SENZA distruggerlo. ---
       - name: Terraform import & reconcile state
         working-directory: ${{ inputs.working_directory }}
         env:
@@ -291,50 +317,28 @@ jobs:
         run: |
           set -uo pipefail
 
-          # id corrente di una risorsa nello state (vuoto se assente)
           state_id() { terraform state show "$1" 2>/dev/null | awk -F'"' '/^[[:space:]]*id[[:space:]]*=/{print $2; exit}'; }
           in_state()  { terraform state list 2>/dev/null | grep -qx "$1"; }
-
-          # rimuove dallo state (senza distruggere in AWS) se l'id non combacia con quello desiderato
           rm_if_mismatch() {
             local addr="$1" desired="$2"
             if in_state "$addr"; then
               local cur; cur=$(state_id "$addr")
               if [ "$cur" != "$desired" ]; then
-                echo "Reconcile $addr: '$cur' != '$desired' -> state rm (non distrutto in AWS)"
+                echo "Reconcile $addr: '$cur' != '$desired' -> state rm"
                 terraform state rm "$addr" || true
               fi
             fi
           }
 
-          # ---- Migrazione IAM: da ruolo condiviso a ruolo per-progetto ----
-          # Se lo state ha il ruolo con un nome diverso da quello desiderato,
-          # rimuove TUTTI i 5 oggetti IAM dallo state (NON li distrugge) cosi'
-          # il plan crea quelli per-progetto senza toccare il ruolo condiviso.
-          if in_state aws_iam_role.eb_ec2_role; then
-            CUR_ROLE=$(state_id aws_iam_role.eb_ec2_role)
-            if [ "$CUR_ROLE" != "$RESOLVED_EC2_ROLE" ]; then
-              echo "Migrazione IAM: '$CUR_ROLE' -> '$RESOLVED_EC2_ROLE'"
-              for a in aws_iam_role.eb_ec2_role aws_iam_instance_profile.eb_ec2_instance_profile \
-                       aws_iam_role_policy.eb_ec2_cloudwatch_logs \
-                       aws_iam_role_policy_attachment.eb_ec2_role_attach \
-                       aws_iam_role_policy_attachment.eb_ec2_worker_attach; do
-                terraform state rm "$a" || true
-              done
-            fi
-          fi
-          # Import per-progetto SOLO se il ruolo esiste gia' (run successivi); altrimenti verra' creato
-          if aws iam get-role --role-name "$RESOLVED_EC2_ROLE" --region "$REGION" >/dev/null 2>&1; then
-            terraform import aws_iam_role.eb_ec2_role "$RESOLVED_EC2_ROLE" || true
-            terraform import aws_iam_instance_profile.eb_ec2_instance_profile "$RESOLVED_EC2_ROLE" || true
-            terraform import aws_iam_role_policy.eb_ec2_cloudwatch_logs "$RESOLVED_EC2_ROLE:EBCloudWatchLogsPolicy" || true
-            terraform import aws_iam_role_policy_attachment.eb_ec2_role_attach "$RESOLVED_EC2_ROLE/arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier" || true
-            terraform import aws_iam_role_policy_attachment.eb_ec2_worker_attach "$RESOLVED_EC2_ROLE/arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier" || true
-          else
-            echo "IAM role $RESOLVED_EC2_ROLE assente: verra' creato dal plan."
-          fi
+          # IAM non piu' gestito da Terraform: rimuovi dallo state eventuali residui
+          # (NON vengono distrutti in AWS: restano come infrastruttura condivisa).
+          for a in aws_iam_role.eb_ec2_role aws_iam_instance_profile.eb_ec2_instance_profile \
+                   aws_iam_role_policy.eb_ec2_cloudwatch_logs \
+                   aws_iam_role_policy_attachment.eb_ec2_role_attach \
+                   aws_iam_role_policy_attachment.eb_ec2_worker_attach; do
+            if in_state "$a"; then echo "state rm $a (IAM ora fuori Terraform)"; terraform state rm "$a" || true; fi
+          done
 
-          # ---- WAF regex pattern sets ----
           import_regex_set() {
             local tfaddr="$1" name="$2" id
             id=$(aws wafv2 list-regex-pattern-sets --scope REGIONAL --region "$REGION" \
@@ -348,7 +352,6 @@ jobs:
           import_regex_set aws_wafv2_regex_pattern_set.blocked_http_methods http-methods-blocked
           import_regex_set aws_wafv2_regex_pattern_set.path_services        allowed-path-prefix-services
 
-          # ---- WAF Web ACL ----
           ACL_NAME="eb-waf-${RESOLVED_PROJECT}"
           ACL_ID=$(aws wafv2 list-web-acls --scope REGIONAL --region "$REGION" \
                     --query "WebACLs[?Name=='$ACL_NAME'].Id | [0]" --output text)
@@ -357,14 +360,12 @@ jobs:
             in_state aws_wafv2_web_acl.waf || terraform import aws_wafv2_web_acl.waf "$ACL_ID/$ACL_NAME/REGIONAL" || true
           else echo "Web ACL $ACL_NAME assente: skip."; fi
 
-          # ---- EB Application (anti-rename) ----
           if aws elasticbeanstalk describe-applications --application-names "$RESOLVED_APP_NAME" --region "$REGION" \
                --query "Applications[0].ApplicationName" --output text 2>/dev/null | grep -qx "$RESOLVED_APP_NAME"; then
             rm_if_mismatch aws_elastic_beanstalk_application.app "$RESOLVED_APP_NAME"
             in_state aws_elastic_beanstalk_application.app || terraform import aws_elastic_beanstalk_application.app "$RESOLVED_APP_NAME" || true
           else echo "EB application $RESOLVED_APP_NAME assente: verra' creata."; fi
 
-          # ---- EB Environment (anti-rename, id = e-xxxx) ----
           ENV_ID=$(aws elasticbeanstalk describe-environments --environment-names "$RESOLVED_ENV_NAME" --region "$REGION" \
                     --query "Environments[?Status!='Terminated'].EnvironmentId | [0]" --output text)
           if [ -n "$ENV_ID" ] && [ "$ENV_ID" != "None" ]; then
@@ -372,7 +373,6 @@ jobs:
             in_state aws_elastic_beanstalk_environment.env || terraform import aws_elastic_beanstalk_environment.env "$ENV_ID" || true
           else echo "EB environment $RESOLVED_ENV_NAME assente: verra' creato."; fi
 
-          # ---- WAF association ----
           if [ -n "${ACL_ID:-}" ] && [ "$ACL_ID" != "None" ] && [ -n "${ENV_ID:-}" ] && [ "$ENV_ID" != "None" ]; then
             ACL_ARN=$(aws wafv2 list-web-acls --scope REGIONAL --region "$REGION" \
                        --query "WebACLs[?Name=='$ACL_NAME'].ARN | [0]" --output text)
