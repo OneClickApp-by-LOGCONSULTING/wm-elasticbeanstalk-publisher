@@ -1,0 +1,302 @@
+name: Reusable Terraform EB Deploy
+
+on:
+  workflow_call:
+    inputs:
+      terraform_version:
+        description: 'Terraform version to use'
+        type: string
+        default: '1.11.3'
+      aws_region:
+        description: 'AWS Region for deployment and S3 resources'
+        type: string
+        default: 'eu-west-1'
+      working_directory:
+        description: 'Root directory for Terraform configuration files'
+        type: string
+        default: 'src/main/webapp/resources/IaaC'
+      eb_env_name:
+        description: 'Elastic Beanstalk environment name (e.g., connect-env)'
+        type: string
+        default: ''
+        required: false
+      eb_app_name:
+        description: 'Elastic Beanstalk application name'
+        type: string
+        default: ''
+        required: false
+      node_version:
+        description: 'Node.js version for the application build'
+        type: string
+        default: '22.18.0'
+      npm_version:
+        description: 'NPM version to use'
+        type: string
+        default: '10.9.3'
+      java_version:
+        description: 'Java JDK version'
+        type: string
+        default: '21'
+      maven_version:
+        description: 'Apache Maven version'
+        type: string
+        default: '3.9.12'
+      s3_bucket_name:
+        description: 'S3 bucket name for uploading deployment artifacts'
+        type: string
+        required: false
+      maven_profile:
+        description: 'Application profile (e.g., prod, dev)'
+        type: string
+        default: 'prod'
+      log-group-prefix:
+         required: false
+         type: string  
+      root-war-url:
+         required: false
+         type: string  
+         default: ''
+      loader-io-token:
+         required: false
+         type: string  
+         default: ''
+      force-lowercase-app-name: # Force pipeline to change the WAR file name to deploy to lowercase letter only.
+        required: false
+        type: boolean
+        default: false
+      force-root-app-name: # force Wavemaker application name as ROOT.war, it places Tomcat to have WM-APP in root context.
+        required: false
+        type: boolean
+        default: false  
+      
+
+    secrets:
+      AWS_ROLE_TO_ASSUME_FOR_DEPLOY:
+        description: 'IAM Role ARN for OIDC authentication'
+        required: true
+
+jobs:
+  configure-elastic-beanstalk-enviroments:
+      
+      runs-on: ubuntu-latest
+      outputs:
+        eb_app_name: ${{ steps.configure-app.outputs.eb_app_name }}
+      permissions:
+        id-token: write
+        contents: read
+      steps:
+      - uses: actions/checkout@v4.2.2
+  
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3.1.2
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+  
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
+          aws-region: ${{ inputs.aws_region }}
+      
+      - name: Ensure S3 bucket exists for tettaform states
+        run: |
+          BUCKET_TO_CHECK="terraform-${{ github.event.repository.name }}-state"
+          if ! aws s3api head-bucket --bucket "${BUCKET_TO_CHECK,,}" 2>/dev/null; then
+            echo "Bucket does not exist. Creating..."
+            aws s3api create-bucket \
+              --bucket "${BUCKET_TO_CHECK,,}" \
+              --region "${{ inputs.aws_region }}" \
+                 --create-bucket-configuration LocationConstraint="${{ inputs.aws_region }}"
+              
+          else
+            echo "Bucket already exists."
+          fi
+      
+      - name: Extract S3 backend info from Terraform (safe)
+        working-directory: ${{ inputs.working_directory }}
+        id: s3info
+        run: |
+          set -e
+      
+          # 1️⃣ Inizializza Terraform
+          if [[ ! -f "main.tf" ]]; then
+            echo "Errore: main.tf non trovato!"
+            exit 1
+          fi
+      
+
+          terraform init -input=false -reconfigure -lock=false
+      
+          STATE_FILE=".terraform/terraform.tfstate"
+      
+          if [[ ! -f "$STATE_FILE" ]]; then
+            echo "Errore: backend state non trovato"
+            exit 1
+          fi
+      
+          BUCKET=$(jq -r '.backend.config.bucket'  "$STATE_FILE")
+          KEY=$(jq -r '.backend.config.key'        "$STATE_FILE")
+          REGION=$(jq -r '.backend.config.region'  "$STATE_FILE")
+      
+          echo "Bucket=$BUCKET"
+          echo "Key=$KEY"
+          echo "Region=$REGION"
+      
+          echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
+          echo "key=$KEY" >> $GITHUB_OUTPUT
+          echo "region=$REGION" >> $GITHUB_OUTPUT
+          
+      
+
+      - name: Ensure S3 bucket exists for ebt-deployments artifacts
+        run: |
+          # Converto il nome della repository in minuscolo usando l'espansione di Bash ,,
+          REPO_NAME_LC="${{ github.event.repository.name }}"
+          BUCKET_NAME="${REPO_NAME_LC,,}-ebt-deployments" 
+          
+          echo "Checking bucket: $BUCKET_NAME"
+
+          if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
+            echo "Bucket does not exist. Creating..."
+            aws s3api create-bucket \
+              --bucket "$BUCKET_NAME" \
+              --region "${{ inputs.aws_region }}" \
+              --create-bucket-configuration LocationConstraint="${{ inputs.aws_region }}"
+          else
+            echo "Bucket already exists."
+          fi
+     
+      - name: Terraform Init
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform init -input=false -lock=false -reconfigure
+
+      - name: Terraform import common resources
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          terraform import aws_iam_instance_profile.eb_ec2_instance_profile aws-elasticbeanstalk-ec2-role || true 
+          terraform import aws_iam_role.eb_ec2_role aws-elasticbeanstalk-ec2-role || true 
+          terraform import aws_wafv2_regex_pattern_set.blocked_http_methods http-methods-blocked || true
+          terraform import aws_wafv2_regex_pattern_set.valid_http_methods allowed-http-methods || true
+          terraform import aws_wafv2_regex_pattern_set.path_services allowed-path-prefix-services || true
+
+
+  
+      - name: Terraform Validate
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform validate
+  
+      - name: Terraform Plan & Apply
+        id: configure-app
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          # Logica di fallback: se eb_app_name è vuoto, usa il nome del repo
+          APP_NAME="${{ inputs.eb_app_name }}"
+          if [ -z "$APP_NAME" ]; then
+            APP_NAME="${{ github.event.repository.name }}"
+          fi
+          APP_NAME="$APP_NAME-app"
+          echo "Using EB Application Name: $APP_NAME ..."
+          echo "eb_app_name=$APP_NAME" >> $GITHUB_OUTPUT
+          
+          
+          terraform import aws_elastic_beanstalk_application.$APP_NAME $APP_NAME || true
+          terraform plan -lock=false  -out=tfplan
+          terraform apply -lock=false  -auto-approve tfplan
+
+  wait-for-ready-enviroment:
+    needs: configure-elastic-beanstalk-enviroments
+    runs-on: ubuntu-latest
+    outputs:      
+      eb_env_name: ${{ steps.configure-env.outputs.eb_env_name }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+    - name: Configure AWS credentials via OIDC
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
+        aws-region: ${{ inputs.aws_region }}
+
+    - name: Wait for Elastic Beanstalk environment to be ready
+      id: configure-env
+      run: |
+          # Logica di fallback: se eb_env_name è vuoto, usa il nome del repo
+          ENV_NAME="${{ inputs.eb_env_name }}"
+          if [ -z "$ENV_NAME" ]; then
+            ENV_NAME="${{ github.event.repository.name }}"
+          fi
+          ENV_NAME="$ENV_NAME-env"
+          echo "Using EB Environment Name: $ENV_NAME"
+          echo "eb_env_name=$ENV_NAME" >> $GITHUB_OUTPUT
+          max_retries=30
+          sleep_time=10
+          
+          echo "Checking Elastic Beanstalk environment $ENV_NAME ..."
+          
+          version_label=$(aws elasticbeanstalk describe-environments \
+            --environment-names "$ENV_NAME" \
+            --query "Environments[0].VersionLabel" \
+            --output text)
+          
+          if [[ "$version_label" == "Sample Application" || "$version_label" == "None" ]]; then
+            echo "Environment uses sample app. Skipping wait."
+            exit 0
+          fi
+          
+          for i in $(seq 1 $max_retries); do
+            status=$(aws elasticbeanstalk describe-environments \
+              --environment-names "$ENV_NAME" \
+              --query "Environments[0].Status" \
+              --output text)
+            
+            health=$(aws elasticbeanstalk describe-environments \
+              --environment-names "$ENV_NAME" \
+              --query "Environments[0].Health" \
+              --output text)
+            
+            echo "Attempt $i: Status = $status, Health = $health"
+            
+            if [ "$status" = "Ready" ] && { [ "$health" = "Green" ] || [ "$health" = "Ok" ]; }; then
+              echo "Environment is ready."
+              exit 0
+            fi
+            sleep $sleep_time
+          done
+          exit 1
+  prepare-bucket-name:
+    runs-on: ubuntu-latest
+    outputs:
+      s3_bucket_name: ${{ steps.out.outputs.bucket }}
+    steps:
+      - id: out
+        run: |
+          REPO_NAME_LC="${{ github.event.repository.name }}"
+          echo "bucket=${REPO_NAME_LC,,}-ebt-deployments" >> $GITHUB_OUTPUT
+          
+  call-build-and-deploy:
+    needs: 
+      - wait-for-ready-enviroment
+      - configure-elastic-beanstalk-enviroments
+      - prepare-bucket-name
+    permissions:
+      id-token: write
+      contents: read
+    uses: OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher/.github/workflows/ebt-deployer.yml@main
+    secrets: 
+       AWS_ROLE_TO_ASSUME_FOR_DEPLOY: ${{ secrets.AWS_ROLE_TO_ASSUME_FOR_DEPLOY }}
+    with:
+      node-version: ${{ inputs.node_version }}
+      npm-version: ${{ inputs.npm_version }}
+      maven-version: ${{ inputs.maven_version }}
+      java-version: ${{ inputs.java_version }}
+      aws-region: ${{ inputs.aws_region }}      
+      environment-name: ${{ needs.wait-for-ready-enviroment.outputs.eb_env_name }}
+      wm-app-name: ${{ github.event.repository.name }}
+      beanstalk-application-name: ${{ needs.configure-elastic-beanstalk-enviroments.outputs.eb_app_name }}
+      wm-profile: ${{ inputs.wm_profile }}
+      aws-s3-bucket-name: ${{ needs.prepare-bucket-name.outputs.s3_bucket_name }}
+      aws-s3-bucket-region: ${{ inputs.aws_region }}
+      force-lowercase-wm-app-name: ${{ inputs.force-lowercase-wm-app-name }}
+      log-group-prefix: ${{ github.event.repository.name }}
+      force-root-wm-app-name: ${{ inputs.force-root-wm-app-name }}
