@@ -307,19 +307,7 @@ jobs:
       - name: Terraform Init
         working-directory: ${{ inputs.working_directory }}
         run: terraform init -input=false -reconfigure
-      - name: One-shot - drop IAM from state
-        working-directory: ${{ inputs.working_directory }}
-        run: |
-          for a in aws_iam_role.eb_ec2_role \
-                   aws_iam_instance_profile.eb_ec2_instance_profile \
-                   aws_iam_role_policy.eb_ec2_cloudwatch_logs \
-                   aws_iam_role_policy_attachment.eb_ec2_role_attach \
-                   aws_iam_role_policy_attachment.eb_ec2_worker_attach; do
-            terraform state rm "$a" 2>/dev/null || true
-          done
-          echo "--- state dopo la pulizia ---"
-          terraform state list 
-        
+            
 
       # --- Import self-healing + anti-rename. IAM NON gestito da TF: se presente
       #     nello state (da versioni precedenti) lo rimuove SENZA distruggerlo. ---
