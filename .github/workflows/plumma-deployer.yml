@@ -316,14 +316,34 @@ jobs:
         env:
           REGION: ${{ inputs.aws_region }}
         run: |
-          set -uo pipefail
+          # NB: lo step gira con 'bash -e {0}': disattiviamo l'exit-on-error,
+          # altrimenti un import che fallisce con "already managed" uccide lo step
+          # nonostante i '|| true'. Niente pipefail: rompe le guardie con i pipe.
+          set +e
+          set -u
 
+          # true se l'indirizzo e' gia' nello state
+          in_state() { terraform state list 2>/dev/null | grep -qx "$1"; }
+
+          # id corrente della risorsa nello state (vuoto se assente)
           state_id() { terraform state show "$1" 2>/dev/null | awk -F'"' '/^[[:space:]]*id[[:space:]]*=/{print $2; exit}'; }
-          in_state()  { terraform state list 2>/dev/null | grep -qx "$1"; }
-          rm_if_mismatch() {
-            local addr="$1" desired="$2"
+
+          # importa l'indirizzo solo se NON e' gia' nello state
+          import_if_absent() {
+            local addr="$1" id="$2"
             if in_state "$addr"; then
-              local cur; cur=$(state_id "$addr")
+              echo "$addr gia' nello state: skip import."
+            else
+              echo "Import $addr <- $id"
+              terraform import "$addr" "$id" || echo "WARN: import $addr fallito (proseguo)."
+            fi
+          }
+
+          # se in state c'e' un id diverso da quello desiderato, lo rimuove (no destroy in AWS)
+          rm_if_mismatch() {
+            local addr="$1" desired="$2" cur
+            if in_state "$addr"; then
+              cur=$(state_id "$addr")
               if [ "$cur" != "$desired" ]; then
                 echo "Reconcile $addr: '$cur' != '$desired' -> state rm"
                 terraform state rm "$addr" || true
@@ -331,8 +351,8 @@ jobs:
             fi
           }
 
-          # IAM non piu' gestito da Terraform: rimuovi dallo state eventuali residui
-          # (NON vengono distrutti in AWS: restano come infrastruttura condivisa).
+          # ---- IAM non piu' gestito da TF: rimuovi eventuali residui dallo state
+          #      (NON distrutti in AWS: restano infrastruttura condivisa) ----
           for a in aws_iam_role.eb_ec2_role aws_iam_instance_profile.eb_ec2_instance_profile \
                    aws_iam_role_policy.eb_ec2_cloudwatch_logs \
                    aws_iam_role_policy_attachment.eb_ec2_role_attach \
@@ -340,49 +360,58 @@ jobs:
             if in_state "$a"; then echo "state rm $a (IAM ora fuori Terraform)"; terraform state rm "$a" || true; fi
           done
 
+          # ---- WAF regex pattern sets (import id = ID/NAME/SCOPE) ----
           import_regex_set() {
             local tfaddr="$1" name="$2" id
             id=$(aws wafv2 list-regex-pattern-sets --scope REGIONAL --region "$REGION" \
-                  --query "RegexPatternSets[?Name=='$name'].Id | [0]" --output text)
+                  --query "RegexPatternSets[?Name=='$name'].Id | [0]" --output text 2>/dev/null)
             if [ -n "$id" ] && [ "$id" != "None" ]; then
               rm_if_mismatch "$tfaddr" "$id"
-              in_state "$tfaddr" || terraform import "$tfaddr" "$id/$name/REGIONAL" || true
-            else echo "Regex set $name assente: skip."; fi
+              import_if_absent "$tfaddr" "$id/$name/REGIONAL"
+            else echo "Regex set $name assente in AWS: skip."; fi
           }
           import_regex_set aws_wafv2_regex_pattern_set.valid_http_methods   allowed-http-methods
           import_regex_set aws_wafv2_regex_pattern_set.blocked_http_methods http-methods-blocked
           import_regex_set aws_wafv2_regex_pattern_set.path_services        allowed-path-prefix-services
 
+          # ---- WAF Web ACL ----
           ACL_NAME="eb-waf-${RESOLVED_PROJECT}"
           ACL_ID=$(aws wafv2 list-web-acls --scope REGIONAL --region "$REGION" \
-                    --query "WebACLs[?Name=='$ACL_NAME'].Id | [0]" --output text)
+                    --query "WebACLs[?Name=='$ACL_NAME'].Id | [0]" --output text 2>/dev/null)
           if [ -n "$ACL_ID" ] && [ "$ACL_ID" != "None" ]; then
             rm_if_mismatch aws_wafv2_web_acl.waf "$ACL_ID"
-            in_state aws_wafv2_web_acl.waf || terraform import aws_wafv2_web_acl.waf "$ACL_ID/$ACL_NAME/REGIONAL" || true
+            import_if_absent aws_wafv2_web_acl.waf "$ACL_ID/$ACL_NAME/REGIONAL"
           else echo "Web ACL $ACL_NAME assente: skip."; fi
 
-          if aws elasticbeanstalk describe-applications --application-names "$RESOLVED_APP_NAME" --region "$REGION" \
-               --query "Applications[0].ApplicationName" --output text 2>/dev/null | grep -qx "$RESOLVED_APP_NAME"; then
+          # ---- EB Application (anti-rename) ----
+          APP_FOUND=$(aws elasticbeanstalk describe-applications --application-names "$RESOLVED_APP_NAME" --region "$REGION" \
+                       --query "Applications[0].ApplicationName" --output text 2>/dev/null)
+          if [ "$APP_FOUND" = "$RESOLVED_APP_NAME" ]; then
             rm_if_mismatch aws_elastic_beanstalk_application.app "$RESOLVED_APP_NAME"
-            in_state aws_elastic_beanstalk_application.app || terraform import aws_elastic_beanstalk_application.app "$RESOLVED_APP_NAME" || true
+            import_if_absent aws_elastic_beanstalk_application.app "$RESOLVED_APP_NAME"
           else echo "EB application $RESOLVED_APP_NAME assente: verra' creata."; fi
 
+          # ---- EB Environment (anti-rename, id = e-xxxx) ----
           ENV_ID=$(aws elasticbeanstalk describe-environments --environment-names "$RESOLVED_ENV_NAME" --region "$REGION" \
-                    --query "Environments[?Status!='Terminated'].EnvironmentId | [0]" --output text)
+                    --query "Environments[?Status!='Terminated'].EnvironmentId | [0]" --output text 2>/dev/null)
           if [ -n "$ENV_ID" ] && [ "$ENV_ID" != "None" ]; then
             rm_if_mismatch aws_elastic_beanstalk_environment.env "$ENV_ID"
-            in_state aws_elastic_beanstalk_environment.env || terraform import aws_elastic_beanstalk_environment.env "$ENV_ID" || true
+            import_if_absent aws_elastic_beanstalk_environment.env "$ENV_ID"
           else echo "EB environment $RESOLVED_ENV_NAME assente: verra' creato."; fi
 
+          # ---- WAF association ----
           if [ -n "${ACL_ID:-}" ] && [ "$ACL_ID" != "None" ] && [ -n "${ENV_ID:-}" ] && [ "$ENV_ID" != "None" ]; then
             ACL_ARN=$(aws wafv2 list-web-acls --scope REGIONAL --region "$REGION" \
-                       --query "WebACLs[?Name=='$ACL_NAME'].ARN | [0]" --output text)
+                       --query "WebACLs[?Name=='$ACL_NAME'].ARN | [0]" --output text 2>/dev/null)
             LB_ARN=$(aws elasticbeanstalk describe-environment-resources --environment-name "$RESOLVED_ENV_NAME" --region "$REGION" \
-                       --query "EnvironmentResources.LoadBalancers[0].Name" --output text)
+                       --query "EnvironmentResources.LoadBalancers[0].Name" --output text 2>/dev/null)
             if [ -n "$ACL_ARN" ] && [ "$ACL_ARN" != "None" ] && [ -n "$LB_ARN" ] && [ "$LB_ARN" != "None" ]; then
-              in_state aws_wafv2_web_acl_association.waf || terraform import aws_wafv2_web_acl_association.waf "${ACL_ARN},${LB_ARN}" || true
+              import_if_absent aws_wafv2_web_acl_association.waf "${ACL_ARN},${LB_ARN}"
             fi
           fi
+
+          echo "Reconcile completato."
+          exit 0
 
       - name: Terraform Validate
         working-directory: ${{ inputs.working_directory }}
