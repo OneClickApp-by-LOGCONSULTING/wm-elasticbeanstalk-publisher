@@ -52,6 +52,16 @@ on:
         type: boolean
         default: false
 
+      # --- Conformita' main.tf allo standard ---
+      template_ref:
+        description: 'Ref (branch o tag) del template canonico in wm-elasticbeanstalk-publisher.'
+        type: string
+        default: 'main'
+      allow_main_drift:
+        description: 'Se true, un main.tf divergente dal template canonico NON blocca il deploy (solo warning).'
+        type: boolean
+        default: false
+
       # --- Piattaforma (Java 21 / Tomcat 10 standard) ---
       java_version:
         type: string
@@ -119,6 +129,9 @@ on:
       AWS_ROLE_TO_ASSUME_FOR_DEPLOY:
         description: 'IAM Role ARN for OIDC authentication'
         required: true
+      TEMPLATE_READ_TOKEN:
+        description: 'PAT con lettura su wm-elasticbeanstalk-publisher. Serve SOLO se quel repo e privato; se e pubblico lascialo vuoto (usa il token di default).'
+        required: false
 
 jobs:
 
@@ -155,6 +168,58 @@ jobs:
         uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: ${{ inputs.terraform_version }}
+          terraform_wrapper: false
+
+      # =================================================================
+      # GATE DI CONFORMITA': il main.tf del progetto deve combaciare col
+      # template canonico templates/eb/main.tf del publisher. Gira PRIMA
+      # del 'sed' sul backend, sul main.tf originale del progetto.
+      # Il checkout del reusable prende il repo CHIAMANTE, quindi il
+      # template canonico va scaricato con un checkout dedicato.
+      # =================================================================
+      - name: Checkout canonical IaaC template
+        uses: actions/checkout@v4.2.2
+        with:
+          repository: OneClickApp-by-LOGCONSULTING/wm-elasticbeanstalk-publisher
+          ref: ${{ inputs.template_ref }}
+          token: ${{ secrets.TEMPLATE_READ_TOKEN || github.token }}
+          path: _publisher
+
+      - name: Verify project main.tf matches canonical standard
+        env:
+          ALLOW_DRIFT: ${{ inputs.allow_main_drift }}
+          TEMPLATE_REF: ${{ inputs.template_ref }}
+        run: |
+          set -e
+          CANON="_publisher/templates/eb/main.tf"
+          PROJ="${{ inputs.working_directory }}/main.tf"
+          [ -f "$CANON" ] || { echo "::error title=Template canonico assente::non trovato $CANON (ref: $TEMPLATE_REF)"; exit 1; }
+          [ -f "$PROJ" ]  || { echo "::error title=main.tf assente::non trovato $PROJ"; exit 1; }
+
+          # Normalizzazione: 'terraform fmt' (ignora differenze di formato) +
+          # rimozione del blocco backend "s3" (varia legittimamente: bucket
+          # riscritto dalla pipeline, key specifica del progetto).
+          norm() {
+            terraform fmt - < "$1" | awk '
+              /^  backend "s3" \{/ { skip=1 }
+              skip==0            { print }
+              skip==1 && /^  \}/ { skip=0; next }
+            '
+          }
+
+          if diff -u <(norm "$CANON") <(norm "$PROJ") > /tmp/main.diff; then
+            echo "main.tf conforme al template canonico (ref: $TEMPLATE_REF)."
+          else
+            echo "----- DIFF (canonico -> progetto) -----"
+            cat /tmp/main.diff
+            echo "---------------------------------------"
+            if [ "$ALLOW_DRIFT" = "true" ]; then
+              echo "::warning title=main.tf fuori standard::drift consentito (allow_main_drift=true), proseguo."
+            else
+              echo "::error title=main.tf fuori standard::il main.tf diverge dal template canonico. Allinealo, oppure rilancia con allow_main_drift=true se e intenzionale."
+              exit 1
+            fi
+          fi
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v6.2.3
@@ -307,7 +372,7 @@ jobs:
       - name: Terraform Init
         working-directory: ${{ inputs.working_directory }}
         run: terraform init -input=false -reconfigure
-            
+
 
       # --- Import self-healing + anti-rename. IAM NON gestito da TF: se presente
       #     nello state (da versioni precedenti) lo rimuove SENZA distruggerlo. ---
